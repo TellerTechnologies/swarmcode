@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "bin": {
-    "swarmcode": "./bin/swarmcode.ts"
+    "swarmcode": "./bin/swarmcode.js"
   },
   "directories": {
     "doc": "docs"
