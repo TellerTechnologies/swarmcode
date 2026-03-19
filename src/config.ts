@@ -1,5 +1,5 @@
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { SwarmConfig, AITool, LLMProvider } from './types.js';
 
@@ -60,14 +60,35 @@ export function loadConfig(projectDir: string): SwarmConfig {
       ? (yaml['enrichment'] as Record<string, unknown>)
       : {};
 
+  const VALID_AI_TOOLS: AITool[] = ['claude-code', 'cursor', 'copilot', 'custom'];
+  const VALID_LLM_PROVIDERS: LLMProvider[] = ['anthropic', 'openai', 'ollama', 'none'];
+
+  const rawAiTool = yaml['ai_tool'] as string | undefined;
+  const ai_tool: AITool =
+    rawAiTool !== undefined && VALID_AI_TOOLS.includes(rawAiTool as AITool)
+      ? (rawAiTool as AITool)
+      : defaults.ai_tool;
+
+  const rawProvider = enrichmentYaml['provider'] as string | undefined;
+  const validatedProvider: LLMProvider =
+    rawProvider !== undefined && VALID_LLM_PROVIDERS.includes(rawProvider as LLMProvider)
+      ? (rawProvider as LLMProvider)
+      : defaults.enrichment.provider;
+
+  const rawTier2 = yaml['tier2_interval'] as unknown;
+  const tier2_interval =
+    typeof rawTier2 === 'number' && rawTier2 > 0 ? rawTier2 : defaults.tier2_interval;
+
+  const rawTier3 = yaml['tier3_interval'] as unknown;
+  const tier3_interval =
+    typeof rawTier3 === 'number' && rawTier3 > 0 ? rawTier3 : defaults.tier3_interval;
+
   const enrichment = {
-    provider: (enrichmentYaml['provider'] as LLMProvider | undefined) ?? defaults.enrichment.provider,
+    provider: validatedProvider,
     api_key_env: (enrichmentYaml['api_key_env'] as string | undefined) ?? defaults.enrichment.api_key_env,
     tier2_model: (enrichmentYaml['tier2_model'] as string | undefined) ?? defaults.enrichment.tier2_model,
     tier3_model: (enrichmentYaml['tier3_model'] as string | undefined) ?? defaults.enrichment.tier3_model,
   };
-
-  const ai_tool = (yaml['ai_tool'] as AITool | undefined) ?? defaults.ai_tool;
 
   // Explicit context_file overrides auto-resolution; otherwise resolve from ai_tool
   const context_file =
@@ -80,8 +101,8 @@ export function loadConfig(projectDir: string): SwarmConfig {
     ignore: Array.isArray(yaml['ignore'])
       ? (yaml['ignore'] as string[])
       : defaults.ignore,
-    tier2_interval: (yaml['tier2_interval'] as number | undefined) ?? defaults.tier2_interval,
-    tier3_interval: (yaml['tier3_interval'] as number | undefined) ?? defaults.tier3_interval,
+    tier2_interval,
+    tier3_interval,
     enrichment,
   };
 

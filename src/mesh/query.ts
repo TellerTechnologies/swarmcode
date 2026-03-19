@@ -83,10 +83,14 @@ export class QueryClient {
     return sock;
   }
 
-  async query(address: string, port: number, request: QueryRequest): Promise<QueryResponse> {
+  async query(address: string, port: number, request: QueryRequest, timeoutMs = 5000): Promise<QueryResponse> {
     const sock = this.getSocket(address, port);
     await sock.send(JSON.stringify(request));
-    const [response] = await sock.receive();
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
+    );
+    const [response] = await Promise.race([sock.receive(), timeout]);
     return JSON.parse(response.toString()) as QueryResponse;
   }
 

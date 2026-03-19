@@ -167,4 +167,81 @@ tier2_interval: 20
     const config = loadConfig(tmpDir);
     expect(config.enrichment.provider).toBe('none');
   });
+
+  describe('runtime config validation', () => {
+    it('falls back to default ai_tool when value is invalid', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\nai_tool: not-a-real-tool\n`
+      );
+      const config = loadConfig(tmpDir);
+      const defaults = getDefaultConfig();
+      expect(config.ai_tool).toBe(defaults.ai_tool);
+    });
+
+    it('falls back to default provider when enrichment.provider is invalid', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\nenrichment:\n  provider: bad-provider\n`
+      );
+      const config = loadConfig(tmpDir);
+      expect(config.enrichment.provider).toBe('none');
+    });
+
+    it('falls back to default tier2_interval when value is zero', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\ntier2_interval: 0\n`
+      );
+      const config = loadConfig(tmpDir);
+      const defaults = getDefaultConfig();
+      expect(config.tier2_interval).toBe(defaults.tier2_interval);
+    });
+
+    it('falls back to default tier2_interval when value is negative', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\ntier2_interval: -10\n`
+      );
+      const config = loadConfig(tmpDir);
+      const defaults = getDefaultConfig();
+      expect(config.tier2_interval).toBe(defaults.tier2_interval);
+    });
+
+    it('falls back to default tier3_interval when value is not a number', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\ntier3_interval: "not-a-number"\n`
+      );
+      const config = loadConfig(tmpDir);
+      const defaults = getDefaultConfig();
+      expect(config.tier3_interval).toBe(defaults.tier3_interval);
+    });
+
+    it('accepts valid ai_tool values', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\nai_tool: cursor\n`
+      );
+      const config = loadConfig(tmpDir);
+      expect(config.ai_tool).toBe('cursor');
+    });
+
+    it('accepts valid positive tier intervals', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\ntier2_interval: 15\ntier3_interval: 120\n`
+      );
+      const config = loadConfig(tmpDir);
+      expect(config.tier2_interval).toBe(15);
+      expect(config.tier3_interval).toBe(120);
+    });
+  });
 });

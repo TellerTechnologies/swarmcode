@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import * as zmq from 'zeromq';
 import type { SwarmUpdate } from '../types.js';
 
@@ -31,6 +31,9 @@ export class MeshBroadcaster extends EventEmitter {
   }
 
   private async receiveLoop(sub: zmq.Subscriber): Promise<void> {
+    // Note: No backpressure applied here — messages are processed as they arrive.
+    // This is a known v1 limitation; it works fine for 3-15 peers. A microbatch
+    // approach (buffering every 50ms) could be added if throughput becomes an issue.
     try {
       for await (const [topicBuf, msgBuf] of sub) {
         if (!this.running) break;

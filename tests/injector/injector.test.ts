@@ -18,12 +18,12 @@ describe('ContextInjector', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates the context file if it does not exist', () => {
+  it('creates the context file if it does not exist', async () => {
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
     const filePath = join(tmpDir, 'CLAUDE.md');
 
     expect(existsSync(filePath)).toBe(false);
-    const wrote = injector.inject('## Team Context\nHello');
+    const wrote = await injector.inject('## Team Context\nHello');
     expect(wrote).toBe(true);
     expect(existsSync(filePath)).toBe(true);
 
@@ -33,12 +33,12 @@ describe('ContextInjector', () => {
     expect(content).toContain(END_MARKER);
   });
 
-  it('preserves existing content outside markers', () => {
+  it('preserves existing content outside markers', async () => {
     const filePath = join(tmpDir, 'CLAUDE.md');
     writeFileSync(filePath, '# My Project\n\nSome existing docs.\n', 'utf-8');
 
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    injector.inject('Injected content');
+    await injector.inject('Injected content');
 
     const content = readFileSync(filePath, 'utf-8');
     expect(content).toContain('# My Project');
@@ -48,13 +48,13 @@ describe('ContextInjector', () => {
     expect(content).toContain(END_MARKER);
   });
 
-  it('replaces existing swarmcode block on subsequent injects', () => {
+  it('replaces existing swarmcode block on subsequent injects', async () => {
     const filePath = join(tmpDir, 'CLAUDE.md');
     writeFileSync(filePath, '# My Project\n', 'utf-8');
 
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    injector.inject('First content');
-    injector.inject('Second content');
+    await injector.inject('First content');
+    await injector.inject('Second content');
 
     const content = readFileSync(filePath, 'utf-8');
     expect(content).not.toContain('First content');
@@ -64,15 +64,15 @@ describe('ContextInjector', () => {
     expect(content.split(END_MARKER).length).toBe(2);
   });
 
-  it('returns false and skips write when content is unchanged', () => {
+  it('returns false and skips write when content is unchanged', async () => {
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    const wrote1 = injector.inject('Same content');
+    const wrote1 = await injector.inject('Same content');
     expect(wrote1).toBe(true);
 
     const filePath = join(tmpDir, 'CLAUDE.md');
     const mtimeBefore = readFileSync(filePath, 'utf-8');
 
-    const wrote2 = injector.inject('Same content');
+    const wrote2 = await injector.inject('Same content');
     expect(wrote2).toBe(false);
 
     // File content should be identical
@@ -80,33 +80,33 @@ describe('ContextInjector', () => {
     expect(mtimeBefore).toBe(mtimeAfter);
   });
 
-  it('returns true after content changes', () => {
+  it('returns true after content changes', async () => {
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    injector.inject('Old content');
+    await injector.inject('Old content');
 
-    const wrote = injector.inject('New content');
+    const wrote = await injector.inject('New content');
     expect(wrote).toBe(true);
   });
 
-  it('creates nested directories if context file path contains subdirs', () => {
+  it('creates nested directories if context file path contains subdirs', async () => {
     const injector = new ContextInjector(tmpDir, 'nested/deep/.cursorrules');
     const filePath = join(tmpDir, 'nested/deep/.cursorrules');
 
     expect(existsSync(filePath)).toBe(false);
-    injector.inject('nested content');
+    await injector.inject('nested content');
     expect(existsSync(filePath)).toBe(true);
 
     const content = readFileSync(filePath, 'utf-8');
     expect(content).toContain('nested content');
   });
 
-  it('clear removes the swarmcode section', () => {
+  it('clear removes the swarmcode section', async () => {
     const filePath = join(tmpDir, 'CLAUDE.md');
     writeFileSync(filePath, '# My Project\n\nExisting content.\n', 'utf-8');
 
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    injector.inject('Team context here');
-    injector.clear();
+    await injector.inject('Team context here');
+    await injector.clear();
 
     const content = readFileSync(filePath, 'utf-8');
     expect(content).not.toContain(START_MARKER);
@@ -116,17 +116,17 @@ describe('ContextInjector', () => {
     expect(content).toContain('Existing content.');
   });
 
-  it('clear on non-existent file does not throw', () => {
+  it('clear on non-existent file does not throw', async () => {
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    expect(() => injector.clear()).not.toThrow();
+    await expect(injector.clear()).resolves.not.toThrow();
   });
 
-  it('clear resets lastContent so next inject writes again', () => {
+  it('clear resets lastContent so next inject writes again', async () => {
     const injector = new ContextInjector(tmpDir, 'CLAUDE.md');
-    injector.inject('Content');
-    expect(injector.inject('Content')).toBe(false); // unchanged, skip
+    await injector.inject('Content');
+    expect(await injector.inject('Content')).toBe(false); // unchanged, skip
 
-    injector.clear();
-    expect(injector.inject('Content')).toBe(true); // after clear, should write
+    await injector.clear();
+    expect(await injector.inject('Content')).toBe(true); // after clear, should write
   });
 });

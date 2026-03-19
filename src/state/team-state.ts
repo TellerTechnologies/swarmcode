@@ -86,7 +86,7 @@ export class TeamState {
     return this.getAllPeers().map((peer) => ({
       ...peer,
       files: new Map(
-        Array.from(peer.files.entries()).map(([path, fs]) => [path, { ...fs, exports: [...fs.exports] }])
+        Array.from(peer.files.entries()).map(([path, fs]) => [path, { ...fs, exports: [...fs.exports], imports: [...fs.imports] }])
       ),
     }));
   }

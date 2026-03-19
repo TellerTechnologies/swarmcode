@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFile, access } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { FileWatcher } from './watcher.js';
 import { FastExtractor } from './extractor/fast.js';
@@ -40,6 +40,7 @@ export class SwarmAgent {
   private tier2Timer: ReturnType<typeof setInterval> | null = null;
   private tier3Timer: ReturnType<typeof setInterval> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private lastTier3Analysis: string | null = null;
 
   constructor(projectDir: string, config: SwarmConfig) {
     this.projectDir = projectDir;
@@ -153,7 +154,13 @@ export class SwarmAgent {
         .map((p) => `${p.dev_name} (${p.status}): zone=${p.work_zone}, intent=${p.intent ?? 'unknown'}`)
         .join('\n');
       try {
-        await this.richExtractor.analyzeTeam(description);
+        const analysis = await this.richExtractor.analyzeTeam(description);
+        if (analysis) {
+          // Store the analysis and trigger a context update
+          // so the AI gets the cross-team insights
+          this.lastTier3Analysis = analysis;
+          await this.updateContext();
+        }
       } catch {
         // Analysis failures are non-fatal
       }
@@ -189,7 +196,7 @@ export class SwarmAgent {
     await this.queryClient.close();
 
     // Clear injected context
-    this.injector.clear();
+    await this.injector.clear();
 
     console.log('Swarmcode agent stopped.');
   }
@@ -198,13 +205,15 @@ export class SwarmAgent {
     return this.repPort;
   }
 
-  updateContext(): void {
+  private updateContext(): void {
     if (!this.teamState) return;
     const peers = this.teamState.getSnapshot();
     if (peers.length === 0) return;
     const conflicts = this.conflictDetector.detect(peers);
-    const content = formatTeamContext(peers, conflicts);
-    this.injector.inject(content);
+    const content = formatTeamContext(peers, conflicts, this.lastTier3Analysis ?? undefined);
+    this.injector.inject(content).catch(() => {
+      // Non-fatal: ignore inject errors
+    });
   }
 
   private async handleFileChange(event: WatcherEvent): Promise<void> {
@@ -238,7 +247,7 @@ export class SwarmAgent {
     // For created/modified: fast extract
     let code = '';
     try {
-      code = readFileSync(event.absolutePath, 'utf-8');
+      code = await readFile(event.absolutePath, 'utf-8');
     } catch {
       return; // File may have been deleted between event and read
     }
@@ -274,9 +283,9 @@ export class SwarmAgent {
   }
 
   private inferWorkZone(filePath: string): string {
-    // Use the first directory component as the work zone
-    const parts = filePath.split('/');
-    return parts.length > 1 ? parts[0] : '';
+    // Use the full directory path (everything except the filename) as the work zone
+    // e.g. src/auth/middleware.ts -> src/auth
+    return filePath.split('/').slice(0, -1).join('/') || '.';
   }
 
   private isPathSafe(filePath: string): boolean {
@@ -294,13 +303,13 @@ export class SwarmAgent {
     const absolutePath = resolve(this.projectDir, req.file_path);
 
     if (req.type === 'file_exists') {
-      const exists = existsSync(absolutePath);
+      const exists = await access(absolutePath).then(() => true).catch(() => false);
       return { type: req.type, file_path: req.file_path, data: exists, error: null };
     }
 
     if (req.type === 'exports') {
       try {
-        const code = readFileSync(absolutePath, 'utf-8');
+        const code = await readFile(absolutePath, 'utf-8');
         const language = FastExtractor.detectLanguage(req.file_path);
         const result = language ? this.fastExtractor.extract(code, language) : { exports: [], imports: [] };
         return { type: req.type, file_path: req.file_path, data: result.exports, error: null };
@@ -311,7 +320,7 @@ export class SwarmAgent {
 
     if (req.type === 'dependencies') {
       try {
-        const code = readFileSync(absolutePath, 'utf-8');
+        const code = await readFile(absolutePath, 'utf-8');
         const language = FastExtractor.detectLanguage(req.file_path);
         const result = language ? this.fastExtractor.extract(code, language) : { exports: [], imports: [] };
         return { type: req.type, file_path: req.file_path, data: result.imports, error: null };

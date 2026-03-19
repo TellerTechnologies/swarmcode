@@ -38,8 +38,8 @@ export function createCLI(): Command {
       const agent = new SwarmAgent(cwd, config);
       await agent.start();
       // Keep process alive
-      process.on('SIGINT', async () => { await agent.stop(); process.exit(0); });
-      process.on('SIGTERM', async () => { await agent.stop(); process.exit(0); });
+      process.on('SIGINT', async () => { try { await agent.stop(); } catch {} process.exit(0); });
+      process.on('SIGTERM', async () => { try { await agent.stop(); } catch {} process.exit(0); });
     });
 
   // Stub commands
