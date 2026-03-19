@@ -83,6 +83,7 @@ export class SwarmAgent {
     // Wire up discovery events
     this.discovery.on('peer-discovered', (peer: PeerInfo) => {
       this.teamState!.addPeer(peer);
+      console.log(`[peer] ${peer.dev_name} joined the mesh`);
       // Subscribe to their broadcasts
       this.broadcaster.subscribeTo(peer.address, peer.pub_port).catch(() => {
         // Ignore connection errors for unreachable peers
@@ -91,7 +92,10 @@ export class SwarmAgent {
     });
 
     this.discovery.on('peer-lost', (peerId: string) => {
+      const peer = this.teamState!.getPeer(peerId);
+      const name = peer?.dev_name ?? peerId;
       this.teamState!.markOffline(peerId);
+      console.log(`[peer] ${name} went offline`);
       this.updateContext();
     });
 
@@ -104,11 +108,13 @@ export class SwarmAgent {
       }
       this.teamState.applyUpdate(update);
       this.teamState.heartbeat(update.peer_id);
+      console.log(`[update] ${update.dev_name} ${update.event_type} ${update.file_path}`);
       this.updateContext();
     });
 
     // Wire up watcher 'change' events
     this.watcher.on('change', async (event: WatcherEvent) => {
+      console.log(`[watch] ${event.type} ${event.path}`);
       await this.handleFileChange(event);
     });
 
@@ -131,6 +137,7 @@ export class SwarmAgent {
       try {
         const result = await this.richExtractor.enrichBatch(batch);
         if (result.intent || result.summary) {
+          console.log(`[tier2] Enriched ${batch.length} update(s): ${result.intent ?? result.summary}`);
           // Re-broadcast the last update with enriched intent
           const lastUpdate = batch[batch.length - 1];
           const enriched: SwarmUpdate = {
@@ -156,6 +163,7 @@ export class SwarmAgent {
       try {
         const analysis = await this.richExtractor.analyzeTeam(description);
         if (analysis) {
+          console.log(`[tier3] Team analysis updated`);
           // Store the analysis and trigger a context update
           // so the AI gets the cross-team insights
           this.lastTier3Analysis = analysis;
@@ -173,13 +181,19 @@ export class SwarmAgent {
       const OFFLINE_THRESHOLD_MS = 15_000;
       for (const peer of this.teamState.getAllPeers()) {
         if (peer.status === 'online' && now - peer.last_seen > OFFLINE_THRESHOLD_MS) {
+          console.log(`[peer] ${peer.dev_name} timed out (no heartbeat)`);
           this.teamState.markOffline(peer.peer_id);
           this.updateContext();
         }
       }
     }, 5_000);
 
-    console.log(`Swarmcode agent started. PUB port: ${this.pubPort}, REP port: ${this.repPort}`);
+    const peerCount = this.teamState.getAllPeers().length;
+    console.log(`Swarmcode started`);
+    console.log(`  Name: ${this.config.name}`);
+    console.log(`  Peers: ${peerCount}`);
+    console.log(`  Watching: ${this.projectDir}`);
+    console.log(`  Context: ${this.config.context_file}`);
   }
 
   async stop(): Promise<void> {
@@ -211,7 +225,10 @@ export class SwarmAgent {
     if (peers.length === 0) return;
     const conflicts = this.conflictDetector.detect(peers);
     const content = formatTeamContext(peers, conflicts, this.lastTier3Analysis ?? undefined);
-    this.injector.inject(content).catch(() => {
+    this.injector.inject(content).then(() => {
+      const onlinePeers = peers.filter(p => p.status === 'online');
+      console.log(`[context] Updated ${this.config.context_file} (${onlinePeers.length} peer(s) online)`);
+    }).catch(() => {
       // Non-fatal: ignore inject errors
     });
   }
