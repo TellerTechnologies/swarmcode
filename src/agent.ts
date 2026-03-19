@@ -126,6 +126,8 @@ export class SwarmAgent {
       if (!this.teamState.getPeer(update.peer_id)) {
         return; // Ignore unknown peer
       }
+      // Ignore updates about the context file — every peer writes to their own
+      if (update.file_path === this.config.context_file) return;
       this.teamState.applyUpdate(update);
       this.teamState.heartbeat(update.peer_id);
       console.log(`[update] ${update.dev_name} ${update.event_type} ${update.file_path}`);
