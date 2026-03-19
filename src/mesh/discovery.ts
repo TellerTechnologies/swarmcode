@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'node:crypto';
-import Bonjour from 'bonjour-service';
+import { Bonjour } from 'bonjour-service';
 import type { Service } from 'bonjour-service';
 import type { PeerInfo } from '../types.js';
 
