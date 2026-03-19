@@ -43,7 +43,7 @@ describe('RichExtractor.enrichBatch', () => {
     expect(provider.summarize).toHaveBeenCalledOnce();
     expect(provider.summarize).toHaveBeenCalledWith(expect.stringContaining('src/api.ts'), 'tier2');
     expect(result.intent).toBe('alice is adding a fetchUser API');
-    expect(result.summary).toBe('alice is adding a fetchUser API');
+    expect(result.summary).toBeNull(); // summary is intentionally null; intent holds the LLM response
   });
 
   it('includes file path, dev name, work zone, exports and imports in description', async () => {
@@ -82,7 +82,8 @@ describe('RichExtractor.enrichBatch', () => {
     const [descArg] = (provider.summarize as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string];
     expect(descArg).toContain('src/a.ts');
     expect(descArg).toContain('src/b.ts');
-    expect(result.summary).toBe('multi-file summary');
+    expect(result.intent).toBe('multi-file summary');
+    expect(result.summary).toBeNull(); // summary is intentionally null; intent holds the LLM response
   });
 
   it('returns { intent: null, summary: null } when provider returns null', async () => {

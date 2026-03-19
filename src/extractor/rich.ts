@@ -35,8 +35,8 @@ export class RichExtractor {
     const summary = await this.provider.summarize(description, 'tier2');
 
     return {
-      intent: summary,
-      summary,
+      intent: summary,  // The high-level goal
+      summary: null,    // TODO: separate summary extraction in future version
     };
   }
 

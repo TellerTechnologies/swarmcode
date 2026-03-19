@@ -1,6 +1,6 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { watch } from 'chokidar';
-import { relative } from 'path';
+import { relative } from 'node:path';
 import type { FSWatcher } from 'chokidar';
 import type { EventType } from './types.js';
 
@@ -15,6 +15,7 @@ export interface WatcherOptions {
   debounceMs?: number;
 }
 
+// TODO: typed event emitter
 export class FileWatcher extends EventEmitter {
   private readonly dir: string;
   private readonly ignore: string[];
@@ -49,17 +50,19 @@ export class FileWatcher extends EventEmitter {
     });
 
     // Track files that exist when the watcher starts
+    // Store a reference so we can remove only this listener after ready
+    const initialAddListener = (absPath: string): void => {
+      this.knownFiles.add(absPath);
+    };
     await new Promise<void>((resolve) => {
-      this.chokidar!.on('add', (absPath: string) => {
-        this.knownFiles.add(absPath);
-      });
+      this.chokidar!.on('add', initialAddListener);
       this.chokidar!.on('ready', () => {
         resolve();
       });
     });
 
-    // After ready, re-attach 'add' to handle new files post-start
-    this.chokidar.removeAllListeners('add');
+    // After ready, remove only the initial add listener and re-attach for new files post-start
+    this.chokidar.off('add', initialAddListener);
 
     this.chokidar.on('add', (absPath: string) => {
       if (this.knownFiles.has(absPath)) {

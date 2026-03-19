@@ -187,13 +187,37 @@ describe('ConflictDetector', () => {
 
     it('includes severity of warning for duplication', () => {
       const peers = [
-        makePeer('peer-a', 'src/a', { 'src/a/utils.ts': {} }),
-        makePeer('peer-b', 'src/b', { 'src/b/utils.ts': {} }),
+        makePeer('peer-a', 'src/a', { 'src/a/auth-service.ts': {} }),
+        makePeer('peer-b', 'src/b', { 'src/b/auth-service.ts': {} }),
       ];
       const detector = new ConflictDetector();
       const signals = detector.detect(peers);
       const dupConflicts = signals.filter((s) => s.type === 'duplication');
       expect(dupConflicts[0].severity).toBe('warning');
+    });
+
+    it('does not flag index.ts across peers as duplication (common filename)', () => {
+      const peers = [
+        makePeer('peer-a', 'src/auth', { 'src/auth/index.ts': {} }),
+        makePeer('peer-b', 'src/payments', { 'src/payments/index.ts': {} }),
+      ];
+      const detector = new ConflictDetector();
+      const signals = detector.detect(peers);
+      const dupConflicts = signals.filter((s) => s.type === 'duplication');
+      expect(dupConflicts).toHaveLength(0);
+    });
+
+    it('still flags auth-helpers.ts across peers as duplication (non-common filename)', () => {
+      const peers = [
+        makePeer('peer-a', 'src/auth', { 'src/auth/auth-helpers.ts': {} }),
+        makePeer('peer-b', 'src/api', { 'src/api/auth-helpers.ts': {} }),
+      ];
+      const detector = new ConflictDetector();
+      const signals = detector.detect(peers);
+      const dupConflicts = signals.filter((s) => s.type === 'duplication');
+      expect(dupConflicts).toHaveLength(1);
+      expect(dupConflicts[0].peers).toContain('peer-a');
+      expect(dupConflicts[0].peers).toContain('peer-b');
     });
   });
 
@@ -208,11 +232,11 @@ describe('ConflictDetector', () => {
       const peers = [
         makePeer('peer-a', 'src/auth', {
           'src/utils/shared.ts': { exports: ['SharedUtil'] },
-          'src/auth/helper.ts': {},
+          'src/auth/auth-middleware.ts': {},
         }),
         makePeer('peer-b', 'src/auth', {
           'src/lib/shared.ts': { exports: ['SharedUtil'] },
-          'src/api/helper.ts': {},
+          'src/api/auth-middleware.ts': {},
         }),
       ];
       const detector = new ConflictDetector();

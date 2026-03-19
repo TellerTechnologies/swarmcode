@@ -73,10 +73,10 @@ export interface QueryRequest {
   file_path: string;
 }
 
-export interface QueryResponse {
+export interface QueryResponse<T = unknown> {
   type: QueryType;
   file_path: string;
-  data: unknown;
+  data: T;
   error: string | null;
 }
 

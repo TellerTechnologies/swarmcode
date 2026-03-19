@@ -2,6 +2,17 @@ import { basename } from 'node:path';
 import type { PeerState, ConflictSignal } from '../types.js';
 
 export class ConflictDetector {
+  private static readonly COMMON_FILENAMES = new Set([
+    'index.ts', 'index.js', 'index.tsx', 'index.jsx',
+    'types.ts', 'types.js',
+    'utils.ts', 'utils.js',
+    'constants.ts', 'constants.js',
+    'helpers.ts', 'helpers.js',
+    'mod.ts', 'mod.rs',
+    '__init__.py',
+    'main.ts', 'main.js', 'main.py', 'main.go',
+  ]);
+
   detect(peers: PeerState[]): ConflictSignal[] {
     return [
       ...this.detectZoneOverlaps(peers),
@@ -82,6 +93,8 @@ export class ConflictDetector {
     for (const peer of peers) {
       for (const [filePath] of peer.files) {
         const base = basename(filePath);
+        // Skip common filenames that are expected to appear across multiple peers
+        if (ConflictDetector.COMMON_FILENAMES.has(base)) continue;
         const existing = basenameMap.get(base) ?? [];
         existing.push({ peer_id: peer.peer_id, file_path: filePath });
         basenameMap.set(base, existing);

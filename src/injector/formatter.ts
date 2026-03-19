@@ -9,7 +9,7 @@ function timeSince(timestamp: number): string {
   return `${hours}h ago`;
 }
 
-export function formatTeamContext(peers: PeerState[], conflicts?: ConflictSignal[]): string {
+export function formatTeamContext(peers: PeerState[], conflicts?: ConflictSignal[], analysis?: string): string {
   const lines: string[] = [];
 
   lines.push('## Swarmcode Team Context');
@@ -61,6 +61,13 @@ export function formatTeamContext(peers: PeerState[], conflicts?: ConflictSignal
         }
       }
     }
+  }
+
+  if (analysis) {
+    lines.push('');
+    lines.push('### Team Analysis');
+    lines.push('');
+    lines.push(analysis);
   }
 
   lines.push('');

@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { Bonjour } from 'bonjour-service';
 import type { Service } from 'bonjour-service';
