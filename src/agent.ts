@@ -10,7 +10,7 @@ import { TeamState } from './state/team-state.js';
 import { ContextInjector } from './injector/injector.js';
 import { formatTeamContext } from './injector/formatter.js';
 import { ConflictDetector } from './conflict/detector.js';
-import { AnnounceServer, discoverPeer, DEFAULT_ANNOUNCE_PORT } from './mesh/announce.js';
+import { AnnounceServer, discoverPeer, getLocalIp, scanSubnet, DEFAULT_ANNOUNCE_PORT } from './mesh/announce.js';
 import { createLLMProvider } from './llm/provider.js';
 import { parsePlan } from './plan/parser.js';
 import type { SwarmConfig, SwarmUpdate, PeerInfo, QueryRequest, QueryResponse } from './types.js';
@@ -109,6 +109,8 @@ export class SwarmAgent {
         // Ignore connection errors for unreachable peers
       });
       this.updateContext();
+      // Broadcast our current file state so the new peer gets a full picture
+      void this.broadcastCurrentState();
     });
 
     this.discovery.on('peer-lost', (peerId: string) => {
@@ -125,6 +127,11 @@ export class SwarmAgent {
       // Only accept updates from known/discovered peers
       if (!this.teamState.getPeer(update.peer_id)) {
         return; // Ignore unknown peer
+      }
+      // Heartbeat: just update last_seen, no file state
+      if (update.event_type === 'heartbeat') {
+        this.teamState.heartbeat(update.peer_id);
+        return;
       }
       // Ignore updates about the context file — every peer writes to their own
       if (update.file_path === this.config.context_file) return;
@@ -196,11 +203,30 @@ export class SwarmAgent {
       }
     }, this.config.tier3_interval * 1000);
 
-    // Heartbeat timer: mark peers offline after 15s silence
-    this.heartbeatTimer = setInterval(() => {
+    // Heartbeat timer: broadcast ping + mark silent peers offline
+    this.heartbeatTimer = setInterval(async () => {
       if (!this.teamState) return;
+
+      // Send our heartbeat so peers know we're alive
+      const ping: SwarmUpdate = {
+        peer_id: this.selfId,
+        dev_name: this.config.name,
+        timestamp: Date.now(),
+        event_type: 'heartbeat',
+        file_path: '',
+        exports: [],
+        imports: [],
+        work_zone: '',
+        intent: null,
+        summary: null,
+        interfaces: [],
+        touches: [],
+      };
+      try { await this.broadcaster.publish(ping); } catch { /* non-fatal */ }
+
+      // Check for silent peers
       const now = Date.now();
-      const OFFLINE_THRESHOLD_MS = 15_000;
+      const OFFLINE_THRESHOLD_MS = 30_000;
       for (const peer of this.teamState.getAllPeers()) {
         if (peer.status === 'online' && now - peer.last_seen > OFFLINE_THRESHOLD_MS) {
           console.log(`[peer] ${peer.dev_name} timed out (no heartbeat)`);
@@ -230,6 +256,25 @@ export class SwarmAgent {
       void pollPeers();
       this.peerPollTimer = setInterval(pollPeers, 10_000);
     }
+
+    // Subnet scan fallback: if no peers found after 5s, scan local /24
+    setTimeout(async () => {
+      if (!this.teamState || this.teamState.getOnlinePeers().length > 0) return;
+      const localIp = getLocalIp();
+      if (!localIp) return;
+      console.log(`[scan] No peers found, scanning ${localIp.split('.').slice(0, 3).join('.')}.0/24...`);
+      const found = await scanSubnet(localIp);
+      for (const peer of found) {
+        if (peer.peer_id !== this.selfId) {
+          this.discovery?.handlePeerFound(peer);
+        }
+      }
+      if (found.length > 0) {
+        console.log(`[scan] Found ${found.length} peer(s) on subnet`);
+      } else {
+        console.log(`[scan] No peers found on subnet`);
+      }
+    }, 5_000);
 
     const peerCount = this.teamState.getAllPeers().length;
     console.log(`Swarmcode started`);
@@ -279,6 +324,42 @@ export class SwarmAgent {
     }).catch(() => {
       // Non-fatal: ignore inject errors
     });
+  }
+
+  private async broadcastCurrentState(): Promise<void> {
+    const files = this.watcher.getKnownFiles();
+    for (const relPath of files) {
+      if (relPath === this.config.context_file) continue;
+      const absPath = resolve(this.projectDir, relPath);
+      let code = '';
+      try {
+        code = await readFile(absPath, 'utf-8');
+      } catch {
+        continue;
+      }
+      const language = FastExtractor.detectLanguage(relPath);
+      const extracted = language ? this.fastExtractor.extract(code, language) : { exports: [], imports: [] };
+      const update: SwarmUpdate = {
+        peer_id: this.selfId,
+        dev_name: this.config.name,
+        timestamp: Date.now(),
+        event_type: 'file_modified',
+        file_path: relPath,
+        exports: extracted.exports,
+        imports: extracted.imports,
+        work_zone: this.inferWorkZone(relPath),
+        intent: null,
+        summary: null,
+        interfaces: [],
+        touches: [],
+      };
+      try {
+        await this.broadcaster.publish(update);
+      } catch {
+        // Non-fatal
+      }
+    }
+    console.log(`[sync] Broadcast ${files.length} file(s) to new peer`);
   }
 
   private async handleFileChange(event: WatcherEvent): Promise<void> {

@@ -13,9 +13,14 @@ export interface ProjectPlan {
   sharedContext: string;
 }
 
-// Matches: - **Feature name** - OwnerName  OR  - Feature name - OwnerName
-const ASSIGNMENT_RE = /^- \*\*(.+?)\*\*\s+-\s+(\S+)|^- ([^*\n]+?)\s+-\s+(\S+)/;
-// Matches indented sub-bullet items
+// Matches assignment lines in multiple formats:
+//   - **Feature** - Owner          (bold feature, hyphen)
+//   - **Feature** — Owner          (bold feature, em-dash)
+//   - Feature - Owner              (plain feature, hyphen)
+//   - Feature — Owner              (plain feature, em-dash)
+// Both "Feature - Owner" and "Owner — Role" patterns work (feature/owner are interchangeable labels)
+const ASSIGNMENT_RE = /^- \*\*(.+?)\*\*\s+[-—–]\s+(.+?)$|^- ([^*\n]+?)\s+[-—–]\s+(.+?)$/;
+// Matches indented sub-bullet items (with optional backtick-wrapped paths)
 const DETAIL_RE = /^\s{2,}- (.+)/;
 
 export function parsePlan(projectDir: string): ProjectPlan | null {

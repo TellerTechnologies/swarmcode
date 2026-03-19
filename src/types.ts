@@ -1,4 +1,4 @@
-export type EventType = 'file_created' | 'file_modified' | 'file_deleted' | 'intent_updated';
+export type EventType = 'file_created' | 'file_modified' | 'file_deleted' | 'intent_updated' | 'heartbeat';
 export type PeerStatus = 'online' | 'offline';
 export type LLMProvider = 'anthropic' | 'openai' | 'ollama' | 'none';
 export type AITool = 'claude-code' | 'cursor' | 'copilot' | 'custom';
@@ -63,6 +63,7 @@ export interface SwarmConfig {
   ai_tool: AITool;
   context_file: string;
   ignore: string[];
+  peers: string[];
   tier2_interval: number;
   tier3_interval: number;
   enrichment: EnrichmentConfig;

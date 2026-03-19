@@ -84,6 +84,10 @@ export class FileWatcher extends EventEmitter {
     });
   }
 
+  getKnownFiles(): string[] {
+    return Array.from(this.knownFiles).map((absPath) => relative(this.dir, absPath));
+  }
+
   async stop(): Promise<void> {
     // Cancel all pending debounce timers
     for (const timer of this.pendingTimers.values()) {

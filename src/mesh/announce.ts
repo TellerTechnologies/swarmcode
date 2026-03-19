@@ -1,4 +1,5 @@
 import * as zmq from 'zeromq';
+import { networkInterfaces } from 'node:os';
 import type { PeerInfo } from '../types.js';
 
 export const DEFAULT_ANNOUNCE_PORT = 9377;
@@ -95,4 +96,45 @@ export async function discoverPeer(
   } finally {
     req.close();
   }
+}
+
+/**
+ * Get the first non-loopback IPv4 address from this machine.
+ */
+export function getLocalIp(): string | null {
+  const ifaces = networkInterfaces();
+  for (const addrs of Object.values(ifaces)) {
+    if (!addrs) continue;
+    for (const addr of addrs) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        return addr.address;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Scan the local /24 subnet for swarmcode peers on the announce port.
+ * Probes all 254 IPs in parallel with a short timeout.
+ * Skips the local IP to avoid self-discovery.
+ */
+export async function scanSubnet(
+  localIp: string,
+  port: number = DEFAULT_ANNOUNCE_PORT,
+  timeoutMs: number = 2000,
+): Promise<PeerInfo[]> {
+  const parts = localIp.split('.');
+  if (parts.length !== 4) return [];
+  const subnet = parts.slice(0, 3).join('.');
+
+  const probes: Promise<PeerInfo | null>[] = [];
+  for (let i = 1; i <= 254; i++) {
+    const ip = `${subnet}.${i}`;
+    if (ip === localIp) continue;
+    probes.push(discoverPeer(ip, port, timeoutMs));
+  }
+
+  const results = await Promise.all(probes);
+  return results.filter((p): p is PeerInfo => p !== null);
 }

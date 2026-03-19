@@ -22,6 +22,7 @@ export function getDefaultConfig(name?: string): SwarmConfig {
     ai_tool: 'claude-code',
     context_file: 'CLAUDE.md',
     ignore: ['node_modules', '.git', 'dist', '.swarmcode'],
+    peers: [],
     tier2_interval: 30,
     tier3_interval: 300,
     enrichment: {
@@ -101,6 +102,9 @@ export function loadConfig(projectDir: string): SwarmConfig {
     ignore: Array.isArray(yaml['ignore'])
       ? (yaml['ignore'] as string[])
       : defaults.ignore,
+    peers: Array.isArray(yaml['peers'])
+      ? (yaml['peers'] as string[])
+      : defaults.peers,
     tier2_interval,
     tier3_interval,
     enrichment,
