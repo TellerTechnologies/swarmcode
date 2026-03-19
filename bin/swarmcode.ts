@@ -1,2 +1,4 @@
 #!/usr/bin/env tsx
-console.log('swarmcode');
+import { createCLI } from '../src/cli.js';
+const program = createCLI();
+program.parse();
