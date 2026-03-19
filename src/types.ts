@@ -64,6 +64,7 @@ export interface SwarmConfig {
   context_file: string;
   ignore: string[];
   peers: string[];
+  git_sync: boolean;
   tier2_interval: number;
   tier3_interval: number;
   enrichment: EnrichmentConfig;

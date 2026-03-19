@@ -11,6 +11,7 @@ import { ContextInjector } from './injector/injector.js';
 import { formatTeamContext } from './injector/formatter.js';
 import { ConflictDetector } from './conflict/detector.js';
 import { AnnounceServer, discoverPeer, getLocalIp, scanSubnet, DEFAULT_ANNOUNCE_PORT } from './mesh/announce.js';
+import { GitSync } from './sync/git-sync.js';
 import { createLLMProvider } from './llm/provider.js';
 import { parsePlan } from './plan/parser.js';
 import type { SwarmConfig, SwarmUpdate, PeerInfo, QueryRequest, QueryResponse } from './types.js';
@@ -31,6 +32,7 @@ export class SwarmAgent {
   private teamState: TeamState | null = null;
   private discovery: MeshDiscovery | null = null;
   private announceServer: AnnounceServer | null = null;
+  private gitSync: GitSync | null = null;
   private injector: ContextInjector;
   private conflictDetector: ConflictDetector;
 
@@ -276,6 +278,13 @@ export class SwarmAgent {
       }
     }, 5_000);
 
+    // Git auto-sync: commit + pull + push every 30s
+    if (this.config.git_sync) {
+      this.gitSync = new GitSync(this.projectDir, this.config.name);
+      this.gitSync.start(30_000);
+      console.log(`  Git sync: enabled (every 30s)`);
+    }
+
     const peerCount = this.teamState.getAllPeers().length;
     console.log(`Swarmcode started`);
     console.log(`  Name: ${this.config.name}`);
@@ -295,6 +304,7 @@ export class SwarmAgent {
     if (this.peerPollTimer) { clearInterval(this.peerPollTimer); this.peerPollTimer = null; }
 
     // Stop all components
+    if (this.gitSync) { this.gitSync.stop(); this.gitSync = null; }
     await this.watcher.stop();
     if (this.discovery) { await this.discovery.stop(); this.discovery = null; }
     if (this.announceServer) { await this.announceServer.stop(); this.announceServer = null; }

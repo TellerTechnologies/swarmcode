@@ -25,6 +25,7 @@ export function createCLI(): Command {
     .option('--name <name>', 'Your display name')
     .option('--ai-tool <tool>', 'AI tool to use', 'claude-code')
     .option('--peers <ips>', 'Comma-separated peer IPs (e.g. 192.168.1.15,192.168.1.20)')
+    .option('--git-sync', 'Enable automatic git commit/pull/push')
     .action(async (options) => {
       const cwd = process.cwd();
       const configDir = join(cwd, '.swarmcode');
@@ -36,6 +37,9 @@ export function createCLI(): Command {
       // Parse peers
       if (options.peers) {
         config.peers = options.peers.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+      if (options.gitSync) {
+        config.git_sync = true;
       }
 
       writeFileSync(join(configDir, 'config.yaml'), stringifyYaml({ ...config }), 'utf-8');
@@ -66,10 +70,12 @@ export function createCLI(): Command {
     .description('Start the swarmcode agent')
     .option('--name <name>', 'Override display name')
     .option('--peer <ip>', 'Connect to a peer by IP (repeatable)', (val: string, prev: string[]) => prev.concat(val), [] as string[])
+    .option('--git-sync', 'Enable automatic git commit/pull/push')
     .action(async (options) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
       if (options.name) config.name = options.name;
+      if (options.gitSync) config.git_sync = true;
       // Merge config peers with CLI --peer flags, deduplicate
       const cliPeers: string[] = options.peer ?? [];
       const peers = [...new Set([...config.peers, ...cliPeers])];

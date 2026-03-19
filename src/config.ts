@@ -23,6 +23,7 @@ export function getDefaultConfig(name?: string): SwarmConfig {
     context_file: 'CLAUDE.md',
     ignore: ['node_modules', '.git', 'dist', '.swarmcode'],
     peers: [],
+    git_sync: false,
     tier2_interval: 30,
     tier3_interval: 300,
     enrichment: {
@@ -105,6 +106,7 @@ export function loadConfig(projectDir: string): SwarmConfig {
     peers: Array.isArray(yaml['peers'])
       ? (yaml['peers'] as string[])
       : defaults.peers,
+    git_sync: typeof yaml['git_sync'] === 'boolean' ? yaml['git_sync'] : defaults.git_sync,
     tier2_interval,
     tier3_interval,
     enrichment,
