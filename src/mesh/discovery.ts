@@ -89,8 +89,14 @@ export class MeshDiscovery extends EventEmitter {
     // Skip self
     if (peer.peer_id === this.selfInfo.peer_id) return;
 
-    // Skip already-known peers
+    // Skip already-known peers (by ID)
     if (this.knownPeers.has(peer.peer_id)) return;
+
+    // Skip if we already know a peer at this address (prevents duplicates
+    // when both mDNS and manual --peer discover the same machine)
+    for (const known of this.knownPeers.values()) {
+      if (known.address === peer.address && known.address !== '') return;
+    }
 
     this.knownPeers.set(peer.peer_id, peer);
     this.emit('peer-discovered', peer);

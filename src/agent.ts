@@ -50,7 +50,7 @@ export class SwarmAgent {
     this.projectDir = projectDir;
     this.config = config;
 
-    this.watcher = new FileWatcher(projectDir, { ignore: config.ignore });
+    this.watcher = new FileWatcher(projectDir, { ignore: [...config.ignore, config.context_file] });
     this.fastExtractor = new FastExtractor();
     const llmProvider = createLLMProvider(config.enrichment);
     this.richExtractor = new RichExtractor(llmProvider);
