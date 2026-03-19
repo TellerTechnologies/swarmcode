@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import { FileWatcher } from './watcher.js';
 import { FastExtractor } from './extractor/fast.js';
 import { RichExtractor } from './extractor/rich.js';
@@ -15,6 +16,8 @@ import type { SwarmConfig, SwarmUpdate, PeerInfo, QueryRequest, QueryResponse } 
 import type { WatcherEvent } from './watcher.js';
 
 export class SwarmAgent {
+  private static readonly MAX_TIER2_BUFFER = 500;
+
   private readonly projectDir: string;
   private readonly config: SwarmConfig;
 
@@ -94,8 +97,12 @@ export class SwarmAgent {
     // Wire up broadcaster 'update' events
     this.broadcaster.on('update', (update: SwarmUpdate) => {
       if (!this.teamState) return;
-      this.teamState.heartbeat(update.peer_id);
+      // Only accept updates from known/discovered peers
+      if (!this.teamState.getPeer(update.peer_id)) {
+        return; // Ignore unknown peer
+      }
       this.teamState.applyUpdate(update);
+      this.teamState.heartbeat(update.peer_id);
       this.updateContext();
     });
 
@@ -187,6 +194,10 @@ export class SwarmAgent {
     console.log('Swarmcode agent stopped.');
   }
 
+  getRepPort(): number {
+    return this.repPort;
+  }
+
   updateContext(): void {
     if (!this.teamState) return;
     const peers = this.teamState.getSnapshot();
@@ -216,6 +227,9 @@ export class SwarmAgent {
         await this.broadcaster.publish(update);
       } catch {
         // Non-fatal
+      }
+      if (this.tier2Buffer.length >= SwarmAgent.MAX_TIER2_BUFFER) {
+        this.tier2Buffer.shift(); // Drop oldest
       }
       this.tier2Buffer.push(update);
       return;
@@ -253,6 +267,9 @@ export class SwarmAgent {
       // Non-fatal
     }
 
+    if (this.tier2Buffer.length >= SwarmAgent.MAX_TIER2_BUFFER) {
+      this.tier2Buffer.shift(); // Drop oldest
+    }
     this.tier2Buffer.push(update);
   }
 
@@ -262,15 +279,28 @@ export class SwarmAgent {
     return parts.length > 1 ? parts[0] : '';
   }
 
+  private isPathSafe(filePath: string): boolean {
+    const resolved = resolve(this.projectDir, filePath);
+    return resolved.startsWith(this.projectDir + sep) || resolved === this.projectDir;
+  }
+
   private async handleQuery(req: QueryRequest): Promise<QueryResponse> {
+    // Validate path to prevent path traversal attacks
+    if (!this.isPathSafe(req.file_path)) {
+      return { type: req.type, file_path: req.file_path, data: null, error: 'Path outside project' };
+    }
+
+    // Resolve to absolute path within projectDir
+    const absolutePath = resolve(this.projectDir, req.file_path);
+
     if (req.type === 'file_exists') {
-      const exists = existsSync(req.file_path);
+      const exists = existsSync(absolutePath);
       return { type: req.type, file_path: req.file_path, data: exists, error: null };
     }
 
     if (req.type === 'exports') {
       try {
-        const code = readFileSync(req.file_path, 'utf-8');
+        const code = readFileSync(absolutePath, 'utf-8');
         const language = FastExtractor.detectLanguage(req.file_path);
         const result = language ? this.fastExtractor.extract(code, language) : { exports: [], imports: [] };
         return { type: req.type, file_path: req.file_path, data: result.exports, error: null };
@@ -281,7 +311,7 @@ export class SwarmAgent {
 
     if (req.type === 'dependencies') {
       try {
-        const code = readFileSync(req.file_path, 'utf-8');
+        const code = readFileSync(absolutePath, 'utf-8');
         const language = FastExtractor.detectLanguage(req.file_path);
         const result = language ? this.fastExtractor.extract(code, language) : { exports: [], imports: [] };
         return { type: req.type, file_path: req.file_path, data: result.imports, error: null };
