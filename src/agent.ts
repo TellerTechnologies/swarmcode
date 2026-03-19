@@ -10,6 +10,7 @@ import { TeamState } from './state/team-state.js';
 import { ContextInjector } from './injector/injector.js';
 import { formatTeamContext } from './injector/formatter.js';
 import { ConflictDetector } from './conflict/detector.js';
+import { AnnounceServer, discoverPeer, DEFAULT_ANNOUNCE_PORT } from './mesh/announce.js';
 import { createLLMProvider } from './llm/provider.js';
 import { parsePlan } from './plan/parser.js';
 import type { SwarmConfig, SwarmUpdate, PeerInfo, QueryRequest, QueryResponse } from './types.js';
@@ -29,17 +30,20 @@ export class SwarmAgent {
   private queryClient: QueryClient;
   private teamState: TeamState | null = null;
   private discovery: MeshDiscovery | null = null;
+  private announceServer: AnnounceServer | null = null;
   private injector: ContextInjector;
   private conflictDetector: ConflictDetector;
 
   private selfId: string = '';
   private pubPort: number = 0;
   private repPort: number = 0;
+  private manualPeers: string[] = [];
 
   private tier2Buffer: SwarmUpdate[] = [];
   private tier2Timer: ReturnType<typeof setInterval> | null = null;
   private tier3Timer: ReturnType<typeof setInterval> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private peerPollTimer: ReturnType<typeof setInterval> | null = null;
   private lastTier3Analysis: string | null = null;
 
   constructor(projectDir: string, config: SwarmConfig) {
@@ -62,7 +66,8 @@ export class SwarmAgent {
     this.queryClient = new QueryClient();
   }
 
-  async start(): Promise<void> {
+  async start(manualPeers: string[] = []): Promise<void> {
+    this.manualPeers = manualPeers;
     await this.fastExtractor.init();
 
     // Bind PUB and REP on random ports (port=0)
@@ -78,6 +83,21 @@ export class SwarmAgent {
 
     const selfInfo = this.discovery.getSelfInfo();
     this.selfId = selfInfo.peer_id;
+
+    // Start announce server so other peers can discover us
+    this.announceServer = new AnnounceServer({
+      peer_id: this.selfId,
+      dev_name: this.config.name,
+      pub_port: this.pubPort,
+      rep_port: this.repPort,
+    });
+    try {
+      const announcePort = await this.announceServer.start(DEFAULT_ANNOUNCE_PORT);
+      console.log(`  Announce: port ${announcePort}`);
+    } catch {
+      console.log(`  Announce: port ${DEFAULT_ANNOUNCE_PORT} in use, skipping`);
+      this.announceServer = null;
+    }
     this.teamState = new TeamState(this.selfId);
 
     // Wire up discovery events
@@ -188,10 +208,34 @@ export class SwarmAgent {
       }
     }, 5_000);
 
+    // Manual peer polling: discover --peer IPs and retry periodically
+    if (this.manualPeers.length > 0) {
+      const pollPeers = async () => {
+        for (const ip of this.manualPeers) {
+          // Skip if already connected
+          const alreadyKnown = this.teamState!.getAllPeers().some(
+            p => p.address === ip && p.status === 'online'
+          );
+          if (alreadyKnown) continue;
+
+          const peer = await discoverPeer(ip);
+          if (peer && peer.peer_id !== this.selfId) {
+            this.discovery!.handlePeerFound(peer);
+          }
+        }
+      };
+      // Poll immediately, then every 10s
+      void pollPeers();
+      this.peerPollTimer = setInterval(pollPeers, 10_000);
+    }
+
     const peerCount = this.teamState.getAllPeers().length;
     console.log(`Swarmcode started`);
     console.log(`  Name: ${this.config.name}`);
     console.log(`  Peers: ${peerCount}`);
+    if (this.manualPeers.length > 0) {
+      console.log(`  Manual peers: ${this.manualPeers.join(', ')}`);
+    }
     console.log(`  Watching: ${this.projectDir}`);
     console.log(`  Context: ${this.config.context_file}`);
   }
@@ -201,10 +245,12 @@ export class SwarmAgent {
     if (this.tier2Timer) { clearInterval(this.tier2Timer); this.tier2Timer = null; }
     if (this.tier3Timer) { clearInterval(this.tier3Timer); this.tier3Timer = null; }
     if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+    if (this.peerPollTimer) { clearInterval(this.peerPollTimer); this.peerPollTimer = null; }
 
     // Stop all components
     await this.watcher.stop();
     if (this.discovery) { await this.discovery.stop(); this.discovery = null; }
+    if (this.announceServer) { await this.announceServer.stop(); this.announceServer = null; }
     await this.broadcaster.stop();
     await this.queryServer.stop();
     await this.queryClient.close();

@@ -29,14 +29,16 @@ export function createCLI(): Command {
   program.command('start')
     .description('Start the swarmcode agent')
     .option('--name <name>', 'Override display name')
+    .option('--peer <ip>', 'Connect to a peer by IP (repeatable)', (val: string, prev: string[]) => prev.concat(val), [] as string[])
     .action(async (options) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
       if (options.name) config.name = options.name;
+      const peers: string[] = options.peer ?? [];
       console.log(`Starting swarmcode as "${config.name}"...`);
       const { SwarmAgent } = await import('./agent.js');
       const agent = new SwarmAgent(cwd, config);
-      await agent.start();
+      await agent.start(peers);
       // Keep process alive
       process.on('SIGINT', async () => { try { await agent.stop(); } catch {} process.exit(0); });
       process.on('SIGTERM', async () => { try { await agent.stop(); } catch {} process.exit(0); });
