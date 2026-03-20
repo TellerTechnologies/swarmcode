@@ -48,8 +48,10 @@ export class GitSync {
 
       // Pull with rebase to stay linear
       try {
-        await this.git('pull', '--rebase', '--no-edit');
-        console.log(`[git-sync] Pulled latest`);
+        const pull = await this.git('pull', '--rebase', '--no-edit');
+        if (pull.stdout.includes('Fast-forward') || pull.stdout.includes('rewinding')) {
+          console.log(`[git-sync] Pulled latest`);
+        }
       } catch (err) {
         // If rebase fails (conflict), abort and warn
         const msg = err instanceof Error ? err.message : String(err);
@@ -61,10 +63,13 @@ export class GitSync {
         // Other pull errors (no upstream, etc.) -- just skip
       }
 
-      // Push
+      // Push (only if we have new local commits)
       try {
-        await this.git('push');
-        console.log(`[git-sync] Pushed`);
+        const ahead = await this.git('rev-list', '--count', '@{u}..HEAD');
+        if (parseInt(ahead.stdout.trim(), 10) > 0) {
+          await this.git('push');
+          console.log(`[git-sync] Pushed`);
+        }
       } catch {
         // Push may fail if no upstream or permissions -- non-fatal
       }

@@ -72,6 +72,7 @@ export async function discoverPeer(
   timeoutMs: number = 3000,
 ): Promise<PeerInfo | null> {
   const req = new zmq.Request();
+  req.linger = 0;
   req.sendTimeout = timeoutMs;
   req.receiveTimeout = timeoutMs;
 
