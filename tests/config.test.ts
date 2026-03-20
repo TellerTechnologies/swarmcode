@@ -33,6 +33,7 @@ describe('getDefaultConfig', () => {
     expect(config.context_file).toBe('CLAUDE.md');
     expect(config.ignore).toContain('node_modules');
     expect(config.ignore).toContain('.git');
+    expect(config.sync_interval).toBe(30);
     expect(config.tier2_interval).toBeGreaterThan(0);
     expect(config.tier3_interval).toBeGreaterThan(config.tier2_interval);
     expect(config.enrichment.provider).toBe('none');
@@ -242,6 +243,36 @@ tier2_interval: 20
       const config = loadConfig(tmpDir);
       expect(config.tier2_interval).toBe(15);
       expect(config.tier3_interval).toBe(120);
+    });
+
+    it('uses default sync_interval of 30 when not specified', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\n`
+      );
+      const config = loadConfig(tmpDir);
+      expect(config.sync_interval).toBe(30);
+    });
+
+    it('loads custom sync_interval from config', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\nsync_interval: 60\n`
+      );
+      const config = loadConfig(tmpDir);
+      expect(config.sync_interval).toBe(60);
+    });
+
+    it('falls back to default sync_interval when value is invalid', () => {
+      mkdirSync(join(tmpDir, '.swarmcode'));
+      writeFileSync(
+        join(tmpDir, '.swarmcode', 'config.yaml'),
+        `name: test-project\nsync_interval: -5\n`
+      );
+      const config = loadConfig(tmpDir);
+      expect(config.sync_interval).toBe(30);
     });
   });
 });

@@ -21,9 +21,8 @@ export function getDefaultConfig(name?: string): SwarmConfig {
     name: name ?? 'swarmcode-project',
     ai_tool: 'claude-code',
     context_file: 'CLAUDE.md',
-    ignore: ['node_modules', '.git', 'dist', '.swarmcode'],
-    peers: [],
-    git_sync: false,
+    ignore: ['node_modules', '.git', 'dist'],
+    sync_interval: 30,
     tier2_interval: 30,
     tier3_interval: 300,
     enrichment: {
@@ -77,6 +76,12 @@ export function loadConfig(projectDir: string): SwarmConfig {
       ? (rawProvider as LLMProvider)
       : defaults.enrichment.provider;
 
+  const rawSyncInterval = yaml['sync_interval'] as unknown;
+  const sync_interval =
+    typeof rawSyncInterval === 'number' && rawSyncInterval > 0
+      ? rawSyncInterval
+      : defaults.sync_interval;
+
   const rawTier2 = yaml['tier2_interval'] as unknown;
   const tier2_interval =
     typeof rawTier2 === 'number' && rawTier2 > 0 ? rawTier2 : defaults.tier2_interval;
@@ -103,10 +108,7 @@ export function loadConfig(projectDir: string): SwarmConfig {
     ignore: Array.isArray(yaml['ignore'])
       ? (yaml['ignore'] as string[])
       : defaults.ignore,
-    peers: Array.isArray(yaml['peers'])
-      ? (yaml['peers'] as string[])
-      : defaults.peers,
-    git_sync: typeof yaml['git_sync'] === 'boolean' ? yaml['git_sync'] : defaults.git_sync,
+    sync_interval,
     tier2_interval,
     tier3_interval,
     enrichment,
