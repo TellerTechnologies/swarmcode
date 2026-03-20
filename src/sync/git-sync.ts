@@ -28,42 +28,39 @@ export class GitSync {
   }
 
   async sync(): Promise<void> {
-    if (this.syncing) return; // Skip if previous sync still running
+    if (this.syncing) return;
     this.syncing = true;
 
     try {
-      // Check if we're in a git repo with a remote
       const hasRemote = await this.git('remote').then(r => r.stdout.trim().length > 0).catch(() => false);
       if (!hasRemote) return;
 
-      // Stage all changes
-      await this.git('add', '-A');
+      // Stage only manifest files
+      await this.git('add', '.swarmcode/peers/');
 
       // Check if there's anything to commit
-      const status = await this.git('status', '--porcelain');
+      const status = await this.git('diff', '--cached', '--name-only');
       if (status.stdout.trim().length > 0) {
         await this.git('commit', '-m', `swarmcode: sync from ${this.devName}`);
-        console.log(`[git-sync] Committed local changes`);
+        console.log(`[git-sync] Committed manifest`);
       }
 
-      // Pull with rebase to stay linear
+      // Pull with rebase
       try {
         const pull = await this.git('pull', '--rebase', '--no-edit');
         if (pull.stdout.includes('Fast-forward') || pull.stdout.includes('rewinding')) {
           console.log(`[git-sync] Pulled latest`);
         }
       } catch (err) {
-        // If rebase fails (conflict), abort and warn
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('CONFLICT') || msg.includes('could not apply')) {
-          console.log(`[git-sync] Merge conflict detected, aborting rebase`);
+          console.log(`[git-sync] Merge conflict, aborting rebase`);
           await this.git('rebase', '--abort').catch(() => {});
           return;
         }
-        // Other pull errors (no upstream, etc.) -- just skip
       }
 
-      // Push (only if we have new local commits)
+      // Push if ahead
       try {
         const ahead = await this.git('rev-list', '--count', '@{u}..HEAD');
         if (parseInt(ahead.stdout.trim(), 10) > 0) {
@@ -71,10 +68,9 @@ export class GitSync {
           console.log(`[git-sync] Pushed`);
         }
       } catch {
-        // Push may fail if no upstream or permissions -- non-fatal
+        // non-fatal
       }
     } catch (err) {
-      // Non-fatal: log and continue
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('nothing to commit')) {
         console.log(`[git-sync] Error: ${msg.split('\n')[0]}`);
