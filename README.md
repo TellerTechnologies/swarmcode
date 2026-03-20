@@ -38,6 +38,41 @@ Your laptop                                        Teammate's laptop
 
 **Works anywhere git works:** LAN, VPN, remote teams, CI — no ports, no network configuration, no accounts.
 
+## The Flow
+
+Here's exactly what happens when you run `swarmcode start`:
+
+```
+1. WATCH      Swarmcode watches your project files for changes
+                        ↓
+2. EXTRACT    When a file changes, it parses exports and imports
+              (e.g. "TaskList exports: TaskList, imports: @/lib/types")
+                        ↓
+3. MANIFEST   Writes your file state to .swarmcode/peers/Jared.json
+              {
+                "name": "Jared",
+                "work_zone": "src/components",
+                "files": {
+                  "src/components/TaskList.tsx": {
+                    "exports": [{ "name": "TaskList", ... }],
+                    "imports": ["@/lib/types"]
+                  }
+                }
+              }
+                        ↓
+4. GIT SYNC   Every 30s: git add .swarmcode/peers/ → commit → pull → push
+              Only manifests are committed — your code is never auto-committed
+                        ↓
+5. READ       Reads all .swarmcode/peers/*.json from teammates
+              (these arrived via git pull)
+                        ↓
+6. INJECT     Generates a team context block and writes it to CLAUDE.md
+              Your AI now sees: "laptop built Task in src/lib/types.ts
+              — import from here, do not rebuild"
+```
+
+This cycle runs continuously. Steps 1-3 happen instantly on file change. Steps 4-6 happen every 30 seconds (configurable via `sync_interval`).
+
 ## Quick Start
 
 ### 1. Install
@@ -192,15 +227,13 @@ Swarmcode reads this on startup and uses it to warn AIs when they stray outside 
 
 ## How Updates Work
 
-Swarmcode uses three tiers of updates, from fast to deep:
+Swarmcode has two layers of intelligence:
 
-| Tier | Speed | What it shares | How |
-|------|-------|---------------|-----|
-| **Tier 1** | ~100ms | File names, function signatures, imports | AST parsing (instant, no API needed) |
-| **Tier 2** | 60s | "What is this person building?" summaries | LLM call (needs API key) |
-| **Tier 3** | 5min | "Are there duplications or conflicts across the team?" | LLM analysis (needs API key) |
+**Built-in (no API key needed):** File names, function signatures, exports, and imports are extracted instantly using regex-based parsing. This is the core — your AI will know exactly what functions exist, who created them, and where to import them from.
 
-**Tier 1 works without any API key.** Your AI will know what functions exist and who created them. Tiers 2 and 3 add richer context if you configure an LLM provider.
+**Optional LLM enrichment (needs API key):** If you configure an LLM provider, Swarmcode periodically asks it to summarize what each person is building (Tier 2, every 60s) and analyze the whole team for duplications or conflicts (Tier 3, every 5min). This adds human-readable context like "Building JWT authentication" instead of just raw function names.
+
+**The built-in layer is all most teams need.** LLM enrichment is a nice-to-have, not a requirement.
 
 ## Requirements
 
