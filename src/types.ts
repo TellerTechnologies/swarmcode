@@ -1,27 +1,9 @@
-export type EventType = 'file_created' | 'file_modified' | 'file_deleted' | 'intent_updated' | 'heartbeat';
-export type PeerStatus = 'online' | 'offline';
 export type LLMProvider = 'anthropic' | 'openai' | 'ollama' | 'none';
 export type AITool = 'claude-code' | 'cursor' | 'copilot' | 'custom';
-export type QueryType = 'exports' | 'file_exists' | 'dependencies';
 
 export interface ExportEntry {
   name: string;
   signature: string;
-}
-
-export interface SwarmUpdate {
-  peer_id: string;
-  dev_name: string;
-  timestamp: number;
-  event_type: EventType;
-  file_path: string;
-  exports: ExportEntry[];
-  imports: string[];
-  work_zone: string;
-  intent: string | null;
-  summary: string | null;
-  interfaces: string[];
-  touches: string[];
 }
 
 export interface FileState {
@@ -30,18 +12,18 @@ export interface FileState {
   last_modified: number;
 }
 
-export interface PeerInfo {
-  peer_id: string;
-  dev_name: string;
-  address: string;
-  pub_port: number;
-  rep_port: number;
+export interface ManifestData {
+  name: string;
+  updated_at: number;
+  work_zone: string;
+  intent: string | null;
+  files: Record<string, FileState>;
 }
 
 export interface PeerState {
   peer_id: string;
   dev_name: string;
-  status: PeerStatus;
+  status: 'online' | 'offline';
   last_seen: number;
   address: string;
   pub_port: number;
@@ -63,23 +45,10 @@ export interface SwarmConfig {
   ai_tool: AITool;
   context_file: string;
   ignore: string[];
-  peers: string[];
-  git_sync: boolean;
+  sync_interval: number;
   tier2_interval: number;
   tier3_interval: number;
   enrichment: EnrichmentConfig;
-}
-
-export interface QueryRequest {
-  type: QueryType;
-  file_path: string;
-}
-
-export interface QueryResponse<T = unknown> {
-  type: QueryType;
-  file_path: string;
-  data: T;
-  error: string | null;
 }
 
 export interface ConflictSignal {

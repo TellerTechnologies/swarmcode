@@ -1,76 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type {
-  SwarmUpdate,
   PeerState,
   SwarmConfig,
-  QueryRequest,
-  QueryResponse,
   FileState,
   ExportEntry,
   EnrichmentConfig,
   ConflictSignal,
+  ManifestData,
 } from '../src/types.js';
 
-describe('SwarmUpdate', () => {
-  it('creates a valid SwarmUpdate with tier 1 fields', () => {
-    const update: SwarmUpdate = {
-      peer_id: 'peer-abc-123',
-      dev_name: 'alice',
-      timestamp: Date.now(),
-      event_type: 'file_modified',
-      file_path: 'src/utils.ts',
-      exports: [{ name: 'formatDate', signature: 'formatDate(d: Date): string' }],
-      imports: ['fs', 'path'],
-      work_zone: 'src/',
-      intent: null,
-      summary: null,
-      interfaces: [],
-      touches: [],
-    };
-
-    expect(update.peer_id).toBe('peer-abc-123');
-    expect(update.dev_name).toBe('alice');
-    expect(update.event_type).toBe('file_modified');
-    expect(update.file_path).toBe('src/utils.ts');
-    expect(update.exports).toHaveLength(1);
-    expect(update.exports[0].name).toBe('formatDate');
-    expect(update.imports).toContain('fs');
-    expect(update.intent).toBeNull();
-    expect(update.summary).toBeNull();
-  });
-
-  it('accepts all valid EventType values', () => {
-    const types: SwarmUpdate['event_type'][] = [
-      'file_created',
-      'file_modified',
-      'file_deleted',
-      'intent_updated',
-    ];
-    expect(types).toHaveLength(4);
-  });
-
-  it('allows non-null intent and summary for enriched updates', () => {
-    const update: SwarmUpdate = {
-      peer_id: 'peer-xyz',
-      dev_name: 'bob',
-      timestamp: 1000,
-      event_type: 'file_created',
-      file_path: 'src/api.ts',
-      exports: [],
-      imports: [],
-      work_zone: 'src/',
-      intent: 'Adding REST API endpoint for user auth',
-      summary: 'Defines POST /auth/login handler',
-      interfaces: ['AuthRequest', 'AuthResponse'],
-      touches: ['src/db.ts', 'src/middleware.ts'],
-    };
-
-    expect(update.intent).toBe('Adding REST API endpoint for user auth');
-    expect(update.summary).toBe('Defines POST /auth/login handler');
-    expect(update.interfaces).toContain('AuthRequest');
-    expect(update.touches).toContain('src/db.ts');
-  });
-});
 
 describe('PeerState', () => {
   it('creates a PeerState with a Map of files', () => {
@@ -135,6 +73,7 @@ describe('SwarmConfig', () => {
       ai_tool: 'claude-code',
       context_file: 'CLAUDE.md',
       ignore: ['node_modules', 'dist', '.git'],
+      sync_interval: 5,
       tier2_interval: 30,
       tier3_interval: 300,
       enrichment,
@@ -156,6 +95,7 @@ describe('SwarmConfig', () => {
       ai_tool: 'cursor',
       context_file: '.cursorrules',
       ignore: [],
+      sync_interval: 10,
       tier2_interval: 60,
       tier3_interval: 600,
       enrichment: {
@@ -171,49 +111,40 @@ describe('SwarmConfig', () => {
   });
 });
 
-describe('QueryRequest and QueryResponse', () => {
-  it('creates a valid QueryRequest', () => {
-    const request: QueryRequest = {
-      type: 'exports',
-      file_path: 'src/utils.ts',
+
+describe('ManifestData', () => {
+  it('creates a valid ManifestData with files record', () => {
+    const fileState: FileState = {
+      exports: [{ name: 'parseConfig', signature: 'parseConfig(path: string): SwarmConfig' }],
+      imports: ['fs', 'path'],
+      last_modified: 1700000000000,
     };
 
-    expect(request.type).toBe('exports');
-    expect(request.file_path).toBe('src/utils.ts');
-  });
-
-  it('creates a successful QueryResponse', () => {
-    const exports: ExportEntry[] = [
-      { name: 'add', signature: 'add(a: number, b: number): number' },
-    ];
-
-    const response: QueryResponse = {
-      type: 'exports',
-      file_path: 'src/utils.ts',
-      data: exports,
-      error: null,
+    const manifest: ManifestData = {
+      name: 'alice',
+      updated_at: Date.now(),
+      work_zone: 'src/',
+      intent: 'Refactoring config loader',
+      files: { 'src/config.ts': fileState },
     };
 
-    expect(response.type).toBe('exports');
-    expect(response.error).toBeNull();
-    expect(response.data).toEqual(exports);
+    expect(manifest.name).toBe('alice');
+    expect(manifest.work_zone).toBe('src/');
+    expect(manifest.intent).toBe('Refactoring config loader');
+    expect(manifest.files['src/config.ts']).toEqual(fileState);
   });
 
-  it('creates a QueryResponse with an error', () => {
-    const response: QueryResponse = {
-      type: 'file_exists',
-      file_path: 'src/missing.ts',
-      data: null,
-      error: 'File not found',
+  it('accepts null intent', () => {
+    const manifest: ManifestData = {
+      name: 'bob',
+      updated_at: 1000,
+      work_zone: '',
+      intent: null,
+      files: {},
     };
 
-    expect(response.error).toBe('File not found');
-    expect(response.data).toBeNull();
-  });
-
-  it('supports all QueryType values', () => {
-    const types: QueryRequest['type'][] = ['exports', 'file_exists', 'dependencies'];
-    expect(types).toHaveLength(3);
+    expect(manifest.intent).toBeNull();
+    expect(Object.keys(manifest.files)).toHaveLength(0);
   });
 });
 
