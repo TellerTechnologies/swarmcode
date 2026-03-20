@@ -15,21 +15,28 @@ When multiple developers use AI coding assistants on the same project, each AI w
 
 ## How It Works
 
-Each team member runs a Swarmcode agent on their laptop. The agents automatically discover each other on the local network and share metadata about what each person's AI is building. That metadata gets injected directly into your AI tool's context file — so your AI *knows* what your teammates are doing.
+Each team member runs a Swarmcode agent. The agent watches your files, extracts metadata (function names, exports, imports), and writes it to a manifest file at `.swarmcode/peers/<your-name>.json`. Git syncs these manifests automatically every 30 seconds — commit, pull, push. Each agent reads its teammates' manifests and injects a coordination summary directly into your AI tool's context file.
 
 ```
-Your laptop                          Teammate's laptop
-+-----------------+                  +-----------------+
-| Claude Code     |                  | Cursor          |
-|   reads from    |                  |   reads from    |
-|   CLAUDE.md  <--+---- Swarmcode ---+--> .cursorrules  |
-|                 |    mesh (LAN)    |                 |
-+-----------------+                  +-----------------+
+Your laptop                                        Teammate's laptop
++-----------------+                               +-----------------+
+| Claude Code     |                               | Cursor          |
+|   reads from    |                               |   reads from    |
+|   CLAUDE.md  <--+--[generated locally]          |   .cursorrules  |
+|                 |                               |                 |
+| Swarmcode  -----+--> git push manifest --> shared repo           |
+|                 |                               |                 |
+|                 |    shared repo <-- git pull manifest <-- Swarmcode
++-----------------+                               +-----------------+
 ```
 
-**What gets shared:** Function names, file paths, who's working where, and what they're building. **Not** actual source code — just enough context for the AIs to coordinate.
+**What gets shared:** Function names, file paths, who's working where, and what they're building — written as JSON manifests in `.swarmcode/peers/`. **Not** actual source code.
 
 **What doesn't get shared:** Your files. Git still handles that. Swarmcode shares the *map* (who's building what), not the *territory* (the actual code).
+
+**Only manifests are auto-committed.** Swarmcode only stages and commits files under `.swarmcode/peers/`. Your own code commits are left entirely to you.
+
+**Works anywhere git works:** LAN, VPN, remote teams, CI — no ports, no network configuration, no accounts.
 
 ## Quick Start
 
@@ -56,7 +63,12 @@ In your project directory:
 swarmcode init --name "Your Name"
 ```
 
-This creates a `.swarmcode/config.yaml` file. The defaults work out of the box.
+This creates a `.swarmcode/config.yaml` file and the `.swarmcode/peers/` directory. The defaults work out of the box.
+
+After initializing, follow the printed instructions:
+
+- Commit `.swarmcode/peers/` to git so teammates can receive your manifest.
+- Add your context file (e.g., `CLAUDE.md`) to `.gitignore` — it is generated locally and should not be committed.
 
 ### 3. Start
 
@@ -64,22 +76,22 @@ This creates a `.swarmcode/config.yaml` file. The defaults work out of the box.
 swarmcode start
 ```
 
-That's it. Swarmcode discovers your teammates automatically via the local network. You'll see:
+That's it. Swarmcode writes your manifest, syncs it via git, reads your teammates' manifests, and keeps your AI's context file up to date. You'll see:
 
 ```
 Starting swarmcode as "Jared"...
 Swarmcode started
   Name: Jared
-  Peers: 2
   Watching: /path/to/your/project
   Context: CLAUDE.md
+  Sync: every 30s
 ```
 
 Now open your AI tool and start coding. Your AI's context file will automatically include what your teammates are working on.
 
 ### 4. Everyone else does the same
 
-Each teammate clones the project, runs `swarmcode init --name "Their Name"`, and `swarmcode start`. The agents find each other automatically — no configuration needed. Just be on the same network.
+Each teammate clones the project, runs `swarmcode init --name "Their Name"`, and `swarmcode start`. No network configuration needed — if everyone can push and pull from the shared git remote, it just works.
 
 ## What Your AI Sees
 
@@ -123,6 +135,9 @@ ignore:
   - node_modules
   - dist
   - .git
+
+# How often to sync manifests via git and refresh the context file (seconds)
+sync_interval: 30
 
 # How often to generate AI summaries of your work (seconds)
 # Requires an LLM API key (see below)
@@ -174,9 +189,6 @@ Swarmcode reads this on startup and uses it to warn AIs when they stray outside 
 | `swarmcode start` | Start the agent (runs in foreground) |
 | `swarmcode start --name "Name"` | Start with a specific display name |
 | `swarmcode status` | Show who's online and what they're working on |
-| `swarmcode zones` | Show which directories each person owns |
-| `swarmcode log` | Stream team activity |
-| `swarmcode stop` | Stop the agent |
 
 ## How Updates Work
 
@@ -193,25 +205,30 @@ Swarmcode uses three tiers of updates, from fast to deep:
 ## Requirements
 
 - **Node.js 18+**
-- **Same local network** — all team members must be on the same LAN or VPN for automatic discovery
-- **An AI coding tool** that reads a context file (Claude Code, Cursor, Copilot, etc.)
+- **A shared git repository** with a remote that all team members can push to and pull from
 
 ## FAQ
 
 **Does this replace git?**
-No. Git still handles all file merging and version control. Swarmcode prevents conflicts *before* they reach git by keeping AIs coordinated.
+No. Git still handles all file merging and version control. Swarmcode uses git as its sync layer for manifests, and prevents conflicts *before* they reach your code by keeping AIs coordinated.
 
 **Does it sync my files?**
-No. It only shares metadata — function names, file paths, and summaries. Your actual source code stays on your machine until you push to git.
+No. It only shares metadata — function names, file paths, and summaries. Your actual source code stays on your machine until you push to git as you normally would.
 
 **What if someone goes offline?**
-Their last-known state is preserved. When they reconnect, they automatically get a full sync. No manual steps needed.
+Their last-known manifest is preserved in git. When they come back online and push a new manifest, everyone picks it up on the next sync. No manual steps needed.
 
 **Does everyone need to use the same AI tool?**
 No. Each person can use whatever they prefer. Swarmcode writes to the right context file for each tool.
 
-**How does it find my teammates?**
-mDNS (the same technology that lets you find printers on your network). No server, no configuration, no accounts.
+**Do we need to be on the same network?**
+No. Swarmcode uses git as its transport layer, so it works wherever git works: same LAN, VPN, remote teams, or even CI environments.
+
+**What gets committed to git?**
+Only the manifest files under `.swarmcode/peers/`. Swarmcode never touches your source code commits — those are always left to you.
+
+**What should I add to `.gitignore`?**
+Your AI context file (e.g., `CLAUDE.md`, `.cursorrules`) — it is generated locally from peer manifests and will differ per machine. The `.swarmcode/peers/` directory should be tracked by git.
 
 ## License
 
