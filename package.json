@@ -16,9 +16,8 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["mcp", "ai", "git", "coordination"],
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",
     "commander": "^14.0.3",
