@@ -52,7 +52,7 @@ export function checkPath(params: { path: string }): PathCheckResult {
     if (matchingFiles.length > 0) {
       pending_changes.push({
         branch,
-        author: git.getBranchAuthor(branch),
+        author: git.getBranchAuthor(branch) ?? 'unknown',
         files: matchingFiles,
       });
     }
