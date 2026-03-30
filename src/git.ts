@@ -56,8 +56,17 @@ export interface LogOptions {
   path?: string;
 }
 
+// Unique sentinel used to delimit commits in getLog output.
+// Must not appear in commit messages or file paths.
+const COMMIT_SEP = '---SWARMCODE_COMMIT---';
+
 export function getLog(opts: LogOptions): GitCommit[] {
-  const args = ['log', '--format=%H|%an|%ae|%at|%s', '--name-only', '--no-merges'];
+  // Prepend sentinel to format so we can split commits reliably.
+  // git --name-only places a blank line between the header and file list within
+  // a commit, and another blank line separates consecutive commits — meaning a
+  // naive split on blank lines mis-associates headers with the wrong file list.
+  // Using a sentinel at the start of each header line is more reliable.
+  const args = ['log', `--format=${COMMIT_SEP}%H|%an|%ae|%at|%s`, '--name-only', '--no-merges'];
   if (opts.all) args.push('--all');
   if (opts.since) args.push(`--since=${opts.since}`);
   if (opts.author) args.push(`--author=${opts.author}`);
@@ -69,11 +78,13 @@ export function getLog(opts: LogOptions): GitCommit[] {
   const output = run(args);
   if (!output) return [];
 
-  // Split into blocks separated by blank lines
-  const blocks = output.split(/\n\n+/);
+  // Split on the sentinel — first element will be empty string (before first sentinel)
+  const blocks = output.split(COMMIT_SEP);
   const commits: GitCommit[] = [];
 
   for (const block of blocks) {
+    if (!block.trim()) continue;
+
     const lines = block.split('\n').filter((l) => l.length > 0);
     if (lines.length === 0) continue;
 

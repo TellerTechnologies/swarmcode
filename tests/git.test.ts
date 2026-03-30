@@ -99,16 +99,21 @@ describe('getCurrentBranch', () => {
 // getLog
 // ---------------------------------------------------------------------------
 describe('getLog', () => {
+  // Must match the COMMIT_SEP constant in git.ts
+  const SEP = '---SWARMCODE_COMMIT---';
   const commit1Header = 'abc123|Alice|alice@example.com|1700000000|Fix bug';
   const commit2Header = 'def456|Bob|bob@example.com|1700001000|Add feature';
 
   it('parses multi-commit log with files', () => {
+    // Simulate the sentinel-delimited format that git.ts now produces:
+    // each commit begins with SEP+header, followed by blank line + files
     const output = [
-      commit1Header,
+      SEP + commit1Header,
+      '',
       'src/foo.ts',
       'src/bar.ts',
+      SEP + commit2Header,
       '',
-      commit2Header,
       'lib/baz.ts',
       '',
     ].join('\n');
@@ -176,7 +181,7 @@ describe('getLog', () => {
   });
 
   it('handles commit with no files', () => {
-    const output = [commit1Header, ''].join('\n');
+    const output = [SEP + commit1Header, ''].join('\n');
     mockExecFileSync.mockReturnValue(output as any);
     const result = getLog({});
     expect(result).toHaveLength(1);
