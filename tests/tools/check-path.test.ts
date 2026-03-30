@@ -174,6 +174,6 @@ describe('checkPath', () => {
     const result = checkPath({ path: 'src/foo.ts' });
 
     expect(result.pending_changes).toHaveLength(1);
-    expect(result.pending_changes[0].author).toBeNull();
+    expect(result.pending_changes[0].author).toBe('unknown');
   });
 });
