@@ -258,10 +258,11 @@ async function main(): Promise<void> {
     // Step 4: Bob works in a safe area
     // =====================================================================
 
-    info(`\n  ${CYAN}Bob${RESET} creates feat/dashboard branch`);
+    console.log('');
+    info(`${CYAN}Bob${RESET} creates feat/dashboard branch`);
     gitIn(bobDir, ['checkout', '-b', 'feat/dashboard']);
 
-    info(`  ${CYAN}Bob${RESET} writes src/components/Dashboard.tsx ${DIM}(safe area)${RESET}`);
+    info(`${CYAN}Bob${RESET} writes src/components/Dashboard.tsx ${DIM}(safe area)${RESET}`);
     commitAs(bobDir, 'Bob', 'bob@example.com', 'feat: add Dashboard component', {
       'src/components/Dashboard.tsx': [
         "import { validateToken } from '../auth/login';",
@@ -281,7 +282,7 @@ async function main(): Promise<void> {
     // Step 5: Bob also modifies Alice's file (risky!)
     // =====================================================================
 
-    info(`  ${CYAN}Bob${RESET} also modifies src/auth/login.ts ${RED}(risky!)${RESET}`);
+    info(`${CYAN}Bob${RESET} also modifies src/auth/login.ts ${RED}(risky!)${RESET}`);
     commitAs(bobDir, 'Bob', 'bob@example.com', 'feat: add session timeout to login', {
       'src/auth/login.ts': [
         "import type { Token } from './types';",
@@ -303,7 +304,7 @@ async function main(): Promise<void> {
       ].join('\n'),
     });
 
-    info(`  ${CYAN}Bob${RESET} commits and pushes`);
+    info(`${CYAN}Bob${RESET} commits and pushes`);
     gitIn(bobDir, ['push', '-u', 'origin', 'feat/dashboard']);
 
     // =====================================================================
@@ -360,12 +361,12 @@ async function main(): Promise<void> {
     // Switch back to feat/auth for auto-push (auto-push rejects protected branches)
     gitIn(aliceDir, ['checkout', 'feat/auth']);
 
-    info(`  ${CYAN}Alice${RESET} enables auto-push (interval: 1s)`);
+    info(`${CYAN}Alice${RESET} enables auto-push (interval: 1s)`);
     const apResult = enableAutoPush({ interval: 1 });
     result(`Auto-push enabled on branch: ${apResult.branch}, interval: ${apResult.interval}s`);
 
     try {
-      info(`  ${CYAN}Alice${RESET} makes a new commit...`);
+      info(`${CYAN}Alice${RESET} makes a new commit...`);
       commitAs(aliceDir, 'Alice', 'alice@example.com', 'feat: add token refresh utility', {
         'src/auth/refresh.ts': [
           "import type { Token } from './types';",
@@ -380,11 +381,15 @@ async function main(): Promise<void> {
         ].join('\n'),
       });
 
-      info('  Waiting for auto-push...');
+      info('Waiting for auto-push...');
+      // Suppress git push stderr output from the auto-push tick
+      const origStderrWrite = process.stderr.write.bind(process.stderr);
+      process.stderr.write = (() => true) as typeof process.stderr.write;
       await sleep(2500);
+      process.stderr.write = origStderrWrite;
     } finally {
       const disableResult = disableAutoPush();
-      info(`  ${CYAN}Alice${RESET} disables auto-push: ${GREEN}${disableResult.pushes_made} push(es) made${RESET}`);
+      info(`${CYAN}Alice${RESET} disables auto-push: ${GREEN}${disableResult.pushes_made} push(es) made${RESET}`);
     }
 
     // =====================================================================
