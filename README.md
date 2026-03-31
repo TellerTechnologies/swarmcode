@@ -47,9 +47,12 @@ In your project directory:
 
 ```bash
 swarmcode init
+swarmcode hook
 ```
 
-This appends team coordination rules to your `CLAUDE.md`. Your AI will know to check what teammates are building before creating files or implementing functions.
+`swarmcode init` appends team coordination rules to your `CLAUDE.md`. Your AI will know to check what teammates are building before creating files or implementing functions.
+
+`swarmcode hook` installs a git pre-push hook that runs `git fetch origin` before every push, keeping everyone's view of remote branches fresh.
 
 For other AI tools:
 
@@ -58,7 +61,7 @@ swarmcode init --tool cursor    # writes to .cursorrules
 swarmcode init --tool copilot   # writes to .github/copilot-instructions.md
 ```
 
-The init command only needs to run once — commit the context file so all teammates get the rules.
+Both commands only need to run once per project — commit the context file so all teammates get the rules.
 
 It also adds a recommended project structure so `get_project_context` can find your docs:
 
