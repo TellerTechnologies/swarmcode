@@ -173,10 +173,32 @@ The previous version used a background agent that watched files, wrote JSON mani
 
 See [docs/design-decisions.md](docs/design-decisions.md) for the reasoning behind these changes.
 
+## Language Support
+
+The `search_team_code` tool detects exports and definitions in these languages:
+
+| Language | Extensions | What it finds |
+|----------|-----------|--------------|
+| TypeScript | `.ts`, `.tsx` | `export function`, `export class`, `export interface`, `export type`, `export const` |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | Same as TypeScript |
+| Python | `.py` | Top-level `def`, `class` |
+| Go | `.go` | `func`, `type ... struct/interface` |
+| Rust | `.rs` | `pub fn`, `pub struct`, `pub enum`, `pub trait` |
+| Ruby | `.rb` | Top-level `def`, `class`, `module` |
+| PHP | `.php` | `function`, `class`, `interface`, `trait` |
+| Java | `.java` | `class`, `interface`, `enum`, `public` methods |
+| Kotlin | `.kt`, `.kts` | `fun`, `class`, `object`, `interface` |
+| C# | `.cs` | `public class/interface/struct/enum`, `public` methods |
+| Swift | `.swift` | `func`, `class`, `struct`, `protocol`, `enum` |
+| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx` | `struct`, `class`, top-level functions |
+| Elixir | `.ex`, `.exs` | `defmodule`, `def` |
+| Scala | `.scala`, `.sc` | `def`, `class`, `object`, `trait` |
+
+All matching is regex-based (no AST parsing). It covers common declaration patterns reliably but won't catch unusual or dynamic exports.
+
 ## Limitations
 
-- **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. AI agents commit frequently, so this gap is usually small.
-- **Export search covers JS/TS/Python.** Other languages return no results from `search_team_code`.
+- **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. Auto-push closes this gap when enabled.
 - **Remote branches required.** Conflict detection and path checking analyze remote branches — local-only branches from teammates aren't visible.
 
 ## Documentation
