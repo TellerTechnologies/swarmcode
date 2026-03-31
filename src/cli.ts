@@ -1,66 +1,46 @@
 import { Command } from 'commander';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
-import { loadConfig, getDefaultConfig } from './config.js';
 import { VERSION } from './index.js';
+import { getTeamActivity } from './tools/get-team-activity.js';
 
 export function createCLI(): Command {
   const program = new Command();
-  program.name('swarmcode').description('Team-aware AI coding via git').version(VERSION);
+  program
+    .name('swarmcode')
+    .description('MCP server that coordinates AI coding assistants using git')
+    .version(VERSION);
 
-  program.command('init')
-    .description('Initialize swarmcode in the current project')
-    .option('--name <name>', 'Your display name')
-    .option('--ai-tool <tool>', 'AI tool to use', 'claude-code')
-    .action((options) => {
-      const cwd = process.cwd();
-      const configDir = join(cwd, '.swarmcode');
-      const peersDir = join(configDir, 'peers');
-      if (existsSync(configDir)) {
-        console.log('.swarmcode/ already exists.');
-        return;
-      }
-      mkdirSync(peersDir, { recursive: true });
-      const config = getDefaultConfig(options.name);
-      if (options.aiTool) config.ai_tool = options.aiTool;
-      writeFileSync(join(configDir, 'config.yaml'), stringifyYaml({ ...config }), 'utf-8');
-      console.log('Initialized swarmcode in .swarmcode/');
-      console.log(`\nMake sure .swarmcode/peers/ is committed to git.`);
-      console.log(`Add your context file (${config.context_file}) to .gitignore.`);
-    });
-
-  program.command('start')
-    .description('Start the swarmcode agent')
-    .option('--name <name>', 'Override display name')
-    .action(async (options) => {
-      const cwd = process.cwd();
-      const config = loadConfig(cwd);
-      if (options.name) config.name = options.name;
-      console.log(`Starting swarmcode as "${config.name}"...`);
-      const { SwarmAgent } = await import('./agent.js');
-      const agent = new SwarmAgent(cwd, config);
-      await agent.start();
-      process.on('SIGINT', async () => { try { await agent.stop(); } catch {} process.exit(0); });
-      process.on('SIGTERM', async () => { try { await agent.stop(); } catch {} process.exit(0); });
-    });
-
-  program.command('status')
-    .description('Show who is working on what')
+  // Default action (no subcommand): start MCP server
+  program
     .action(async () => {
-      const cwd = process.cwd();
-      const config = loadConfig(cwd);
-      const { ManifestReader } = await import('./manifest/reader.js');
-      const reader = new ManifestReader(cwd, config.name);
-      const peers = reader.readPeers();
-      if (peers.length === 0) {
-        console.log('No peers found. Is anyone else running swarmcode?');
+      const { startServer } = await import('./server.js');
+      await startServer();
+    });
+
+  program
+    .command('status')
+    .description('Show recent team activity')
+    .option('--since <since>', 'How far back to look', '24h')
+    .action((options) => {
+      const activity = getTeamActivity({ since: options.since });
+
+      if (activity.length === 0) {
+        console.log('No recent team activity found.');
         return;
       }
-      for (const peer of peers) {
-        console.log(`${peer.dev_name} (${peer.status}) — ${peer.work_zone || 'no zone'}`);
-        for (const [path] of peer.files) {
-          console.log(`  ${path}`);
+
+      for (const member of activity) {
+        const ago = Math.round((Date.now() / 1000 - member.last_active) / 60);
+        const timeStr = ago < 60 ? `${ago}m ago` : `${Math.round(ago / 60)}h ago`;
+        console.log(`\n${member.name} (last active ${timeStr})`);
+
+        if (member.work_areas.length > 0) {
+          console.log(`  Working in: ${member.work_areas.join(', ')}`);
+        }
+        if (member.active_branches.length > 0) {
+          console.log(`  Branches: ${member.active_branches.join(', ')}`);
+        }
+        for (const commit of member.recent_commits.slice(0, 3)) {
+          console.log(`  - ${commit.message}`);
         }
       }
     });

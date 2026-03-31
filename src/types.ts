@@ -1,60 +1,74 @@
-export type LLMProvider = 'anthropic' | 'openai' | 'ollama' | 'none';
-export type AITool = 'claude-code' | 'cursor' | 'copilot' | 'custom';
+export interface GitCommit {
+  hash: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  message: string;
+  files: string[];
+}
 
-export interface ExportEntry {
+export interface AuthorActivity {
+  name: string;
+  active_branches: string[];
+  work_areas: string[];
+  recent_files: string[];
+  last_active: number;
+  recent_commits: Array<{ message: string; timestamp: number }>;
+}
+
+export interface PathAuthor {
+  name: string;
+  commit_count: number;
+  last_commit: number;
+}
+
+export interface PendingChange {
+  branch: string;
+  author: string;
+  files: string[];
+}
+
+export type RiskLevel = 'safe' | 'caution' | 'conflict_likely';
+
+export interface PathCheckResult {
+  recent_authors: PathAuthor[];
+  primary_owner: string | null;
+  pending_changes: PendingChange[];
+  locally_modified: boolean;
+  risk: RiskLevel;
+  risk_reason: string;
+}
+
+export interface ExportMatch {
+  file: string;
   name: string;
   signature: string;
+  last_modified_by: string;
+  last_modified_at: number;
+  in_flux: boolean;
 }
 
-export interface FileState {
-  exports: ExportEntry[];
-  imports: string[];
-  last_modified: number;
+export interface ConflictEntry {
+  file: string;
+  branches: Array<{ branch: string; author: string }>;
+  local: boolean;
+  severity: 'low' | 'high';
 }
 
-export interface ManifestData {
+export interface ConflictReport {
+  conflicts: ConflictEntry[];
+  summary: string;
+}
+
+export interface DeveloperProfile {
   name: string;
-  updated_at: number;
-  work_zone: string;
-  intent: string | null;
-  files: Record<string, FileState>;
-}
-
-export interface PeerState {
-  peer_id: string;
-  dev_name: string;
-  status: 'online' | 'offline';
-  last_seen: number;
-  address: string;
-  pub_port: number;
-  rep_port: number;
-  files: Map<string, FileState>;
-  work_zone: string;
-  intent: string | null;
-}
-
-export interface EnrichmentConfig {
-  provider: LLMProvider;
-  api_key_env: string;
-  tier2_model: string;
-  tier3_model: string;
-}
-
-export interface SwarmConfig {
-  name: string;
-  ai_tool: AITool;
-  context_file: string;
-  ignore: string[];
-  sync_interval: number;
-  tier2_interval: number;
-  tier3_interval: number;
-  enrichment: EnrichmentConfig;
-}
-
-export interface ConflictSignal {
-  type: 'zone_overlap' | 'interface_conflict' | 'duplication';
-  severity: 'warning' | 'critical';
-  peers: string[];
-  description: string;
-  file_paths: string[];
+  recent_commits: Array<{
+    hash: string;
+    message: string;
+    timestamp: number;
+    files: string[];
+  }>;
+  active_branches: string[];
+  work_areas: string[];
+  files: string[];
 }

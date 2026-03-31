@@ -1,17 +1,14 @@
-export const VERSION = '0.1.0';
-
-export { SwarmAgent } from './agent.js';
-export { loadConfig, getDefaultConfig } from './config.js';
-export { createCLI } from './cli.js';
+export const VERSION = '2.0.0';
 
 export type {
-  LLMProvider as LLMProviderType,
-  AITool,
-  ExportEntry,
-  FileState,
-  ManifestData,
-  PeerState,
-  EnrichmentConfig,
-  SwarmConfig,
-  ConflictSignal,
+  GitCommit,
+  AuthorActivity,
+  PathAuthor,
+  PendingChange,
+  RiskLevel,
+  PathCheckResult,
+  ExportMatch,
+  ConflictEntry,
+  ConflictReport,
+  DeveloperProfile,
 } from './types.js';
