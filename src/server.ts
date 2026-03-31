@@ -7,6 +7,7 @@ import { checkPath } from './tools/check-path.js';
 import { searchTeamCode } from './tools/search-team-code.js';
 import { checkConflicts } from './tools/check-conflicts.js';
 import { getDeveloper } from './tools/get-developer.js';
+import { enableAutoPush, disableAutoPush } from './tools/auto-push.js';
 
 export function createServer(): McpServer {
   const server = new McpServer(
@@ -18,6 +19,7 @@ export function createServer(): McpServer {
         '- Before implementing a function that might already exist → call search_team_code',
         '- At the start of complex tasks → call get_team_activity',
         '- When something conflicts or breaks unexpectedly → call check_conflicts',
+        '- At the start of a session → call enable_auto_push so teammates see your work immediately',
         'Do not rebuild what a teammate has already built. Import from their work instead.',
       ].join('\n'),
     },
@@ -93,6 +95,38 @@ export function createServer(): McpServer {
     },
     ({ name }) => {
       const result = getDeveloper({ name });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'enable_auto_push',
+    {
+      title: 'Enable Auto-Push',
+      description: 'Start automatically pushing new commits to the remote. Teammates will see your work within seconds of committing. Call this at the start of every session.',
+      inputSchema: {
+        interval: z.number().optional().describe('Seconds between push checks (default: 5)'),
+      },
+    },
+    ({ interval }) => {
+      try {
+        const result = enableAutoPush({ interval });
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+      }
+    },
+  );
+
+  server.registerTool(
+    'disable_auto_push',
+    {
+      title: 'Disable Auto-Push',
+      description: 'Stop automatic pushing. Returns how many pushes were made during the session.',
+      inputSchema: {},
+    },
+    () => {
+      const result = disableAutoPush();
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
   );
