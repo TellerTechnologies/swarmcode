@@ -1,6 +1,7 @@
 import { Command } from 'commander';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { VERSION } from './index.js';
 import { getTeamActivity } from './tools/get-team-activity.js';
 
@@ -107,6 +108,55 @@ Swarmcode scans these locations for project context:
       }
 
       console.log(`Added swarmcode team coordination to ${filePath}`);
+    });
+
+  const PRE_PUSH_HOOK = `#!/bin/sh
+# Installed by swarmcode — keeps remote branches fresh
+git fetch origin 2>/dev/null
+`;
+
+  program
+    .command('hook')
+    .description('Install a git pre-push hook that runs git fetch before each push')
+    .action(() => {
+      // Find the git repo root
+      let repoRoot: string;
+      try {
+        repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+          encoding: 'utf-8',
+        }).trim();
+      } catch {
+        console.log('Not a git repository — cannot install hook.');
+        return;
+      }
+
+      const hooksDir = join(repoRoot, '.git', 'hooks');
+      const hookPath = join(hooksDir, 'pre-push');
+
+      // Check if hook already exists
+      if (existsSync(hookPath)) {
+        const existing = readFileSync(hookPath, 'utf-8');
+        if (existing.includes('swarmcode')) {
+          console.log('Swarmcode pre-push hook is already installed.');
+          return;
+        }
+        console.log(
+          `A pre-push hook already exists at ${hookPath}. ` +
+          'Remove it manually if you want swarmcode to manage it.',
+        );
+        return;
+      }
+
+      // Create hooks directory if needed
+      if (!existsSync(hooksDir)) {
+        mkdirSync(hooksDir, { recursive: true });
+      }
+
+      // Write and make executable
+      writeFileSync(hookPath, PRE_PUSH_HOOK);
+      chmodSync(hookPath, 0o755);
+
+      console.log(`Installed swarmcode pre-push hook at ${hookPath}`);
     });
 
   return program;
