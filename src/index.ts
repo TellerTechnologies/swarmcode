@@ -13,4 +13,6 @@ export type {
   DeveloperProfile,
   AutoPushResult,
   AutoPushDisableResult,
+  ProjectContextFile,
+  ProjectContextResult,
 } from './types.js';

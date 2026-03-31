@@ -85,3 +85,14 @@ export interface AutoPushDisableResult {
   enabled: false;
   pushes_made: number;
 }
+
+export interface ProjectContextFile {
+  path: string;
+  content: string;
+}
+
+export interface ProjectContextResult {
+  files: ProjectContextFile[];
+  total_files: number;
+  truncated: boolean;
+}
