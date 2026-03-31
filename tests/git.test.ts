@@ -19,6 +19,7 @@ import {
   getLastModifier,
   getStatusForPath,
 } from '../src/git.js';
+import * as git from '../src/git.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -396,5 +397,87 @@ describe('getStatusForPath', () => {
   it('returns empty array for no changes', () => {
     mockExecFileSync.mockReturnValue('' as any);
     expect(getStatusForPath('src/')).toEqual([]);
+  });
+});
+
+describe('getHeadSha', () => {
+  it('returns the current HEAD sha', () => {
+    mockExecFileSync.mockReturnValue('abc123def456\n');
+    const result = git.getHeadSha();
+    expect(result).toBe('abc123def456');
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git', ['rev-parse', 'HEAD'], expect.any(Object),
+    );
+  });
+
+  it('returns null on error', () => {
+    mockExecFileSync.mockImplementation(() => { throw new Error('not a repo'); });
+    expect(git.getHeadSha()).toBeNull();
+  });
+});
+
+describe('hasRemote', () => {
+  it('returns true when origin exists', () => {
+    mockExecFileSync.mockReturnValue('origin\n');
+    expect(git.hasRemote('origin')).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git', ['remote'], expect.any(Object),
+    );
+  });
+
+  it('returns false when origin does not exist', () => {
+    mockExecFileSync.mockReturnValue('upstream\n');
+    expect(git.hasRemote('origin')).toBe(false);
+  });
+
+  it('returns false on error', () => {
+    mockExecFileSync.mockImplementation(() => { throw new Error('fail'); });
+    expect(git.hasRemote('origin')).toBe(false);
+  });
+});
+
+describe('getUpstreamBranch', () => {
+  it('returns upstream branch when set', () => {
+    mockExecFileSync.mockReturnValue('origin/feat/auth\n');
+    expect(git.getUpstreamBranch()).toBe('origin/feat/auth');
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], expect.any(Object),
+    );
+  });
+
+  it('returns null when no upstream', () => {
+    mockExecFileSync.mockImplementation(() => { throw new Error('no upstream'); });
+    expect(git.getUpstreamBranch()).toBeNull();
+  });
+});
+
+describe('push', () => {
+  it('pushes with -u when setUpstream is true', () => {
+    mockExecFileSync.mockReturnValue('');
+    const result = git.push('feat/auth', true);
+    expect(result.ok).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git', ['push', '-u', 'origin', 'feat/auth'], expect.any(Object),
+    );
+  });
+
+  it('pushes without -u when setUpstream is false', () => {
+    mockExecFileSync.mockReturnValue('');
+    const result = git.push('feat/auth', false);
+    expect(result.ok).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git', ['push', 'origin', 'feat/auth'], expect.any(Object),
+    );
+  });
+
+  it('returns error message on failure', () => {
+    mockExecFileSync.mockImplementation(() => {
+      const err = new Error('rejected') as any;
+      err.stderr = 'Updates were rejected because the remote contains work';
+      throw err;
+    });
+    const result = git.push('feat/auth', false);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('rejected');
   });
 });

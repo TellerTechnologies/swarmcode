@@ -172,3 +172,35 @@ export function getStatusForPath(path: string): string[] {
   if (!output) return [];
   return output.split('\n').filter((l) => l.length > 0).map((l) => l.slice(3));
 }
+
+export function getHeadSha(): string | null {
+  return runOrNull(['rev-parse', 'HEAD']);
+}
+
+export function hasRemote(name: string): boolean {
+  const output = run(['remote']);
+  if (!output) return false;
+  return output.split('\n').some((l) => l.trim() === name);
+}
+
+export function getUpstreamBranch(): string | null {
+  return runOrNull(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+}
+
+export interface PushResult {
+  ok: boolean;
+  error?: string;
+}
+
+export function push(branch: string, setUpstream: boolean): PushResult {
+  try {
+    const args = setUpstream
+      ? ['push', '-u', 'origin', branch]
+      : ['push', 'origin', branch];
+    execFileSync('git', args, EXEC_OPTS);
+    return { ok: true };
+  } catch (err: any) {
+    const message = err.stderr?.toString() || err.message || 'push failed';
+    return { ok: false, error: message };
+  }
+}
