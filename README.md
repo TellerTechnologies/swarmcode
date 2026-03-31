@@ -41,7 +41,26 @@ npm install
 npm link
 ```
 
-### 2. Add to your AI client's MCP config
+### 2. Initialize (once per project)
+
+In your project directory:
+
+```bash
+swarmcode init
+```
+
+This appends team coordination rules to your `CLAUDE.md`. Your AI will know to check what teammates are building before creating files or implementing functions.
+
+For other AI tools:
+
+```bash
+swarmcode init --tool cursor    # writes to .cursorrules
+swarmcode init --tool copilot   # writes to .github/copilot-instructions.md
+```
+
+The init command only needs to run once — commit the context file so all teammates get the rules.
+
+### 3. Add to your AI client's MCP config
 
 **Claude Code** (`~/.claude/settings.json` or project `.mcp.json`):
 ```json
@@ -65,31 +84,54 @@ npm link
 }
 ```
 
-No `init` command, no config files, no setup. The server starts when your AI session starts and stops when it ends.
+### 4. Everyone else does the same
 
-### 3. Everyone else does the same
+Each teammate: install swarmcode, add the MCP config. The `swarmcode init` step only needs to happen once per project — the context file is committed to git so everyone gets it.
 
-Each teammate installs swarmcode and adds it to their AI client config. As long as everyone pushes to the shared git remote, coordination happens automatically.
+## Tools
 
-## The 5 Tools
-
-Your AI calls these tools automatically based on server instructions:
+Your AI calls these automatically based on server instructions and context file rules:
 
 | Tool | When it's called | What it does |
 |------|-----------------|-------------|
-| `get_team_activity` | Start of session, "who's doing what?" | Shows active contributors, their branches, and work areas |
-| `check_path` | Before creating/modifying a file | Returns who owns this area, pending changes on other branches, risk assessment |
+| `get_team_activity` | Start of session | Shows active contributors, their branches, and work areas |
+| `check_path` | Before creating/modifying a file | Returns who owns this area, pending changes, risk assessment |
 | `search_team_code` | Before implementing something | Finds existing exports (functions, classes, types) across the codebase |
 | `check_conflicts` | Proactive health check | Detects files modified on multiple branches that may conflict |
 | `get_developer` | Drill-down on a teammate | Shows a developer's recent commits, branches, and work areas |
+| `enable_auto_push` | Start of session | Automatically pushes new commits so teammates see your work immediately |
+| `disable_auto_push` | End of session (optional) | Stops auto-push and reports how many pushes were made |
 
-All tools are **read-only**. Your work is shared when you commit and push as you normally would.
+All read tools are **read-only**. Auto-push is the only write operation — it runs `git push`, never `git commit` or `git push --force`.
+
+## Auto-Push
+
+The biggest limitation of git-based coordination is the gap between committing and pushing. If your AI commits locally but doesn't push, teammates can't see your work.
+
+Auto-push closes this gap. When enabled, swarmcode watches for new local commits and pushes them to the remote within seconds. Your AI calls `enable_auto_push` at the start of every session (the CLAUDE.md rules tell it to).
+
+**What it does:**
+- Polls for new commits every 5 seconds (configurable)
+- Pushes to the current branch's remote tracking branch
+- Creates the remote tracking branch automatically for new local branches
+- Skips protected branches (main, master, develop)
+
+**What it doesn't do:**
+- Never creates commits — only pushes existing ones
+- Never force-pushes
+- Never pulls or rebases
+- Never touches other branches
 
 ## CLI
 
 ```bash
 # Start MCP server (used by AI clients, not typically run manually)
 swarmcode
+
+# Add coordination rules to your AI context file
+swarmcode init
+swarmcode init --tool cursor
+swarmcode init --tool copilot
 
 # Check team activity from the terminal
 swarmcode status
@@ -127,6 +169,7 @@ The previous version used a background agent that watched files, wrote JSON mani
 - **No config files** — no `swarmcode init` needed
 - **No file injection** — MCP replaces CLAUDE.md/.cursorrules injection
 - **No LLM integration** — git metadata and source analysis are sufficient
+- **`swarmcode init` is back** — but instead of creating config directories, it just appends one markdown section to your AI context file
 
 See [docs/design-decisions.md](docs/design-decisions.md) for the reasoning behind these changes.
 
