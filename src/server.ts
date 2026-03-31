@@ -9,6 +9,7 @@ import { checkConflicts } from './tools/check-conflicts.js';
 import { getDeveloper } from './tools/get-developer.js';
 import { enableAutoPush, disableAutoPush } from './tools/auto-push.js';
 import { getProjectContext } from './tools/get-project-context.js';
+import { checkAll } from './tools/check-all.js';
 
 export function createServer(): McpServer {
   const server = new McpServer(
@@ -16,12 +17,11 @@ export function createServer(): McpServer {
     {
       instructions: [
         'You have access to team coordination tools. Use them:',
+        '- At the very start of a session → call check_all (combines team activity, project context, and conflict check)',
         '- Before creating files in a new directory → call check_path',
         '- Before implementing a function that might already exist → call search_team_code',
-        '- At the start of complex tasks → call get_team_activity',
         '- When something conflicts or breaks unexpectedly → call check_conflicts',
         '- At the start of a session → call enable_auto_push so teammates see your work immediately',
-        '- At the start of a session → call get_project_context to understand the project plan and assignments',
         'Do not rebuild what a teammate has already built. Import from their work instead.',
       ].join('\n'),
     },
@@ -146,6 +146,25 @@ export function createServer(): McpServer {
     ({ path, query }) => {
       const result = getProjectContext({ path, query });
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    'check_all',
+    {
+      title: 'Check All',
+      description: 'Session startup tool. Runs get_team_activity, get_project_context, and check_conflicts in one call. Returns all three results combined so the AI gets full context immediately.',
+      inputSchema: {
+        since: z.string().default('24h').describe('How far back to look for team activity (git date format, e.g. "24h", "7d", "2w")'),
+      },
+    },
+    ({ since }) => {
+      try {
+        const result = checkAll({ since });
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+      }
     },
   );
 

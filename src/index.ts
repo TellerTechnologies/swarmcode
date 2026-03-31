@@ -15,4 +15,5 @@ export type {
   AutoPushDisableResult,
   ProjectContextFile,
   ProjectContextResult,
+  CheckAllResult,
 } from './types.js';

@@ -96,3 +96,9 @@ export interface ProjectContextResult {
   total_files: number;
   truncated: boolean;
 }
+
+export interface CheckAllResult {
+  team_activity: AuthorActivity[];
+  project_context: ProjectContextResult;
+  conflicts: ConflictReport;
+}
