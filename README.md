@@ -166,7 +166,7 @@ The previous version used a background agent that watched files, wrote JSON mani
 
 - **No background processes** — purely reactive to AI tool calls
 - **No manifest files** — no `.swarmcode/` directory
-- **No config files** — no `swarmcode init` needed
+- **No config files** — no `.swarmcode/` directory or `config.yaml`
 - **No file injection** — MCP replaces CLAUDE.md/.cursorrules injection
 - **No LLM integration** — git metadata and source analysis are sufficient
 - **`swarmcode init` is back** — but instead of creating config directories, it just appends one markdown section to your AI context file

@@ -36,7 +36,7 @@ This works because AI agents commit frequently. The window of "invisible uncommi
 
 ```
 src/
-├── server.ts           MCP server setup. Registers 5 tools with zod schemas.
+├── server.ts           MCP server setup. Registers 7 tools with zod schemas.
 │                       Entry point: createServer() → startServer()
 │
 ├── git.ts              All git commands go through here. Wraps execFileSync.
