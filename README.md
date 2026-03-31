@@ -105,10 +105,11 @@ Your AI calls these automatically based on server instructions and context file 
 
 | Tool | When it's called | What it does |
 |------|-----------------|-------------|
+| `check_all` | Start of session | Combines `get_team_activity`, `get_project_context`, and `check_conflicts` in one call |
 | `get_project_context` | Start of session | Reads planning docs, specs, READMEs, and AI context files to understand the project |
 | `get_team_activity` | Start of session | Shows active contributors, their branches, and work areas |
 | `check_path` | Before creating/modifying a file | Returns who owns this area, pending changes, risk assessment |
-| `search_team_code` | Before implementing something | Finds existing exports (functions, classes, types) across the codebase |
+| `search_team_code` | Before implementing something | Finds existing exports across the codebase, including on remote branches |
 | `check_conflicts` | Proactive health check | Detects files modified on multiple branches that may conflict |
 | `get_developer` | Drill-down on a teammate | Shows a developer's recent commits, branches, and work areas |
 | `enable_auto_push` | Start of session | Automatically pushes new commits so teammates see your work immediately |
@@ -144,6 +145,9 @@ swarmcode
 swarmcode init
 swarmcode init --tool cursor
 swarmcode init --tool copilot
+
+# Install git pre-push hook (runs git fetch before each push)
+swarmcode hook
 
 # Check team activity from the terminal
 swarmcode status
@@ -227,7 +231,7 @@ All matching is regex-based (no AST parsing). It covers common declaration patte
 ## Limitations
 
 - **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. Auto-push closes this gap when enabled.
-- **Remote branches required.** Conflict detection and path checking analyze remote branches — local-only branches from teammates aren't visible.
+- **Remote branches required.** Conflict detection, path checking, and branch-aware export search all analyze remote branches — local-only branches from teammates aren't visible.
 
 ## Documentation
 

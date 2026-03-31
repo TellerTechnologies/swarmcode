@@ -19,7 +19,7 @@ The AI client (Claude Code, Cursor, etc.) spawns swarmcode as a subprocess via s
 }
 ```
 
-The MCP server starts, registers 5 tools, and waits for tool calls over stdin/stdout. It has no timers, no watchers, no threads. When the AI session ends, the process dies. There is nothing to clean up.
+The MCP server starts, registers 9 tools, and waits for tool calls over stdin/stdout. It has no timers, no watchers, no threads. When the AI session ends, the process dies. There is nothing to clean up.
 
 ## Key design decision: git IS the shared state
 
@@ -36,11 +36,11 @@ This works because AI agents commit frequently. The window of "invisible uncommi
 
 ```
 src/
-├── server.ts           MCP server setup. Registers 8 tools with zod schemas.
+├── server.ts           MCP server setup. Registers 9 tools with zod schemas.
 │                       Entry point: createServer() → startServer()
 │
 ├── git.ts              All git commands go through here. Wraps execFileSync.
-│                       16 exported functions. No shell injection (execFileSync, not execSync).
+│                       17 exported functions. No shell injection (execFileSync, not execSync).
 │                       Key detail: getLog() uses a sentinel string to parse --name-only
 │                       output reliably (git puts blank lines both within and between commits).
 │
@@ -50,8 +50,9 @@ src/
 ├── tools/
 │   ├── get-team-activity.ts   git log → group by author → work areas, branches
 │   ├── check-path.ts          git log + branch diffs → ownership + risk assessment
-│   ├── search-team-code.ts    source-parser + git metadata → export search with context
+│   ├── search-team-code.ts    source-parser + git metadata → export search with branch-aware context
 │   ├── check-conflicts.ts     branch diffs → overlapping file changes
+│   ├── check-all.ts           combines team activity + project context + conflicts
 │   ├── get-developer.ts       git log --author → developer profile with fuzzy match
 │   ├── auto-push.ts           setInterval + git push → auto-push new commits
 │   └── get-project-context.ts  reads docs/, specs/, READMEs → project context
@@ -59,17 +60,18 @@ src/
 ├── types.ts            All type definitions (GitCommit, AuthorActivity, etc.)
 ├── index.ts            Public exports (VERSION + types)
 └── cli.ts              Commander CLI. Default action starts MCP server.
-                        `swarmcode status` subcommand for terminal use.
+                        `swarmcode status` for terminal use, `swarmcode hook` to install pre-push hook.
 ```
 
 ## The tools
 
 | Tool | When the AI calls it | Core git operations |
 |------|---------------------|---------------------|
+| `check_all` | Start of session (single call) | Combines `get_team_activity` + `get_project_context` + `check_conflicts` |
 | `get_project_context` | Start of session, "what's the plan?" | `readdirSync` + `readFileSync` on doc dirs |
 | `get_team_activity` | Start of session, "who's doing what?" | `git log --all --since=X`, `git branch -r` |
 | `check_path` | Before creating/modifying a file | `git log --all -- <path>`, `git diff` per branch |
-| `search_team_code` | Before implementing something | grep source files + `git log -1` per file |
+| `search_team_code` | Before implementing something | local source files + `git show branch:path` for remote branches |
 | `check_conflicts` | Proactive health check | `git merge-base` + `git diff` per active branch |
 | `get_developer` | Drill-down on a teammate | `git log --all --author=X` |
 | `enable_auto_push` | Start of session | `git rev-parse HEAD` (poll), `git push` |

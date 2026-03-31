@@ -30,17 +30,19 @@ npx tsc --noEmit
 
 ```
 tests/
-├── git.test.ts                    Mocks execFileSync, tests all 12 git.ts functions
+├── git.test.ts                    Mocks execFileSync, tests all 17 git.ts functions
 ├── source-parser.test.ts          Tests regex export search (JS/TS/Python)
 ├── tools/
 │   ├── get-team-activity.test.ts  Mocks git.ts, tests grouping/filtering logic
 │   ├── check-path.test.ts         Mocks git.ts, tests risk assessment
-│   ├── search-team-code.test.ts   Mocks git.ts + fs, tests export search pipeline
+│   ├── search-team-code.test.ts   Mocks git.ts + fs, tests export search pipeline + branch-aware search
 │   ├── check-conflicts.test.ts    Mocks git.ts, tests branch conflict detection
+│   ├── check-all.test.ts          Mocks tool modules, tests combined session startup
 │   ├── get-developer.test.ts      Mocks git.ts, tests fuzzy match + profile building
 │   ├── auto-push.test.ts          Mocks git.ts, tests interval polling and push logic
 │   └── get-project-context.test.ts  Real filesystem tests against temp directories
 ├── cli-init.test.ts               Runs real CLI against temp directories
+├── cli-hook.test.ts               Runs real CLI against temp git repos, tests hook installation
 └── integration/
     ├── mcp-server.test.ts         Real git repo, no mocks, end-to-end
     └── two-agents.test.ts         Two cloned repos, multi-agent coordination
