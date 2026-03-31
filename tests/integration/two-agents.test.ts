@@ -18,6 +18,7 @@ import { searchTeamCode } from '../../src/tools/search-team-code.js';
 import { checkConflicts } from '../../src/tools/check-conflicts.js';
 import { getDeveloper } from '../../src/tools/get-developer.js';
 import { enableAutoPush, disableAutoPush } from '../../src/tools/auto-push.js';
+import { getProjectContext } from '../../src/tools/get-project-context.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -222,7 +223,68 @@ describe('integration: two-agent coordination', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Step 6: Auto-push from Alice's feat/auth
+  // Step 6: Project context — Alice creates docs, Bob reads them
+  // -----------------------------------------------------------------------
+  describe('Project context: Alice writes plan, Bob reads it', () => {
+    beforeAll(() => {
+      // Alice creates project docs and pushes to main
+      gitIn(agent1Dir, ['checkout', 'main']);
+
+      commitAs(agent1Dir, 'Alice', 'alice@x.com', 'docs: add project plan and auth spec', {
+        'PLAN.md': '# Project Plan\n\n## Auth System — Alice\n## Dashboard — Bob\n## API — Charlie\n',
+        'specs/auth-design.md': '# Auth Design\n\nAssigned to: Alice\n\nJWT-based authentication with refresh tokens.\n',
+        'docs/architecture.md': '# Architecture\n\nMonorepo with shared types.\n',
+      });
+      gitIn(agent1Dir, ['push', 'origin', 'main']);
+
+      // Bob pulls to get the docs
+      gitIn(agent2Dir, ['checkout', 'main']);
+      gitIn(agent2Dir, ['pull', 'origin', 'main']);
+      process.chdir(agent2Dir);
+    });
+
+    it('getProjectContext returns README.md', () => {
+      const result = getProjectContext({});
+      expect(result.files.some(f => f.path === 'README.md')).toBe(true);
+    });
+
+    it('getProjectContext returns PLAN.md with assignments', () => {
+      const result = getProjectContext({});
+      const plan = result.files.find(f => f.path === 'PLAN.md');
+      expect(plan).toBeDefined();
+      expect(plan!.content).toContain('Auth System — Alice');
+      expect(plan!.content).toContain('Dashboard — Bob');
+    });
+
+    it('getProjectContext returns specs/ files', () => {
+      const result = getProjectContext({});
+      const spec = result.files.find(f => f.path === 'specs/auth-design.md');
+      expect(spec).toBeDefined();
+      expect(spec!.content).toContain('Assigned to: Alice');
+    });
+
+    it('getProjectContext returns docs/ files', () => {
+      const result = getProjectContext({});
+      const arch = result.files.find(f => f.path === 'docs/architecture.md');
+      expect(arch).toBeDefined();
+      expect(arch!.content).toContain('Monorepo');
+    });
+
+    it('getProjectContext query filters by content', () => {
+      const result = getProjectContext({ query: 'JWT' });
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].path).toBe('specs/auth-design.md');
+    });
+
+    it('getProjectContext path narrows to specs/', () => {
+      const result = getProjectContext({ path: 'specs' });
+      expect(result.files.every(f => f.path.startsWith('specs/'))).toBe(true);
+      expect(result.files.length).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Step 7: Auto-push from Alice's feat/auth
   // -----------------------------------------------------------------------
   it('auto-push pushes new commits to remote', async () => {
     process.chdir(agent1Dir);
