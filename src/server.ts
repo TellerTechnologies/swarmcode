@@ -107,7 +107,7 @@ export function createServer(): McpServer {
       title: 'Enable Auto-Push',
       description: 'Start automatically pushing new commits to the remote. Teammates will see your work within seconds of committing. Call this at the start of every session.',
       inputSchema: {
-        interval: z.number().optional().describe('Seconds between push checks (default: 5)'),
+        interval: z.number().optional().describe('Seconds between push checks (default: 30)'),
       },
     },
     ({ interval }) => {

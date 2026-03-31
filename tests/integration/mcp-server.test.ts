@@ -285,7 +285,7 @@ describe('integration: tools against real git repo', () => {
         const result = enableAutoPush({});
         expect(result.enabled).toBe(true);
         expect(result.branch).toBe('feat/auto-push-test');
-        expect(result.interval).toBe(5);
+        expect(result.interval).toBe(30);
       } finally {
         disableAutoPush();
         gitIn(repoDir, ['checkout', 'main']);

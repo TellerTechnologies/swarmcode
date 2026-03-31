@@ -30,7 +30,7 @@ describe('enableAutoPush', () => {
     expect(result).toEqual({
       enabled: true,
       branch: 'feat/auth',
-      interval: 5,
+      interval: 30,
       protected_branches: ['main', 'master', 'develop'],
     });
   });

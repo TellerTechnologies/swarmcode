@@ -57,7 +57,7 @@ export function enableAutoPush(opts: { interval?: number }): AutoPushResult {
     );
   }
 
-  currentInterval = opts.interval ?? 5;
+  currentInterval = opts.interval ?? 30;
   lastSha = git.getHeadSha();
   pushCount = 0;
 
