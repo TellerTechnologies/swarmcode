@@ -1,4 +1,6 @@
 import { Command } from 'commander';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { VERSION } from './index.js';
 import { getTeamActivity } from './tools/get-team-activity.js';
 
@@ -43,6 +45,57 @@ export function createCLI(): Command {
           console.log(`  - ${commit.message}`);
         }
       }
+    });
+
+  const SWARMCODE_SNIPPET = `## Team Coordination (Swarmcode)
+
+This project uses swarmcode for AI team coordination.
+
+- At the start of every session, call \`enable_auto_push\` and \`get_team_activity\`
+- Before creating or modifying any file, call \`check_path\`
+- Before implementing a function/type/component, call \`search_team_code\`
+- Never rebuild something a teammate already built — import it
+- If check_path returns high risk, stop and ask the developer before proceeding
+`;
+
+  const TOOL_FILES: Record<string, string> = {
+    'claude-code': 'CLAUDE.md',
+    'cursor': '.cursorrules',
+    'copilot': '.github/copilot-instructions.md',
+  };
+
+  program
+    .command('init')
+    .description('Add team coordination rules to your AI context file')
+    .option('--tool <tool>', 'AI tool (claude-code, cursor, copilot)', 'claude-code')
+    .action((options) => {
+      const tool = options.tool as string;
+      const filePath = TOOL_FILES[tool];
+
+      if (!filePath) {
+        console.error(`Unknown tool: ${tool}. Use claude-code, cursor, or copilot.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      // Create parent directory if needed (for copilot's .github/)
+      const dir = dirname(filePath);
+      if (dir !== '.' && !existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+
+      if (existsSync(filePath)) {
+        const existing = readFileSync(filePath, 'utf-8');
+        if (existing.includes('## Team Coordination (Swarmcode)')) {
+          console.log(`Swarmcode section already exists in ${filePath}`);
+          return;
+        }
+        writeFileSync(filePath, existing.trimEnd() + '\n\n' + SWARMCODE_SNIPPET);
+      } else {
+        writeFileSync(filePath, SWARMCODE_SNIPPET);
+      }
+
+      console.log(`Added swarmcode team coordination to ${filePath}`);
     });
 
   return program;
