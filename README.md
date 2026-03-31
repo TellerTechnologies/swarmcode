@@ -2,7 +2,7 @@
 
 **Make your AI coding assistants aware of each other.**
 
-Swarmcode is a lightweight tool that runs in the background while your team codes with AI assistants (Claude Code, Cursor, Copilot, etc.). It automatically tells each person's AI what the rest of the team is building — so they stop duplicating work, avoid conflicts, and stay coordinated without any extra effort from you.
+Swarmcode is an MCP server that coordinates AI coding assistants across a team using git. When one developer's AI is about to create a file, implement a function, or work in a directory — it checks what teammates have already built and avoids duplication.
 
 ## The Problem
 
@@ -15,63 +15,20 @@ When multiple developers use AI coding assistants on the same project, each AI w
 
 ## How It Works
 
-Each team member runs a Swarmcode agent. The agent watches your files, extracts metadata (function names, exports, imports), and writes it to a manifest file at `.swarmcode/peers/<your-name>.json`. Git syncs these manifests automatically every 30 seconds — commit, pull, push. Each agent reads its teammates' manifests and injects a coordination summary directly into your AI tool's context file.
+Swarmcode is a stateless MCP server. Your AI client (Claude Code, Cursor, etc.) spawns it as a subprocess. It reads directly from git and the filesystem on demand — no background processes, no config files, no manifests.
 
 ```
-Your laptop                                        Teammate's laptop
-+-----------------+                               +-----------------+
-| Claude Code     |                               | Cursor          |
-|   reads from    |                               |   reads from    |
-|   CLAUDE.md  <--+--[generated locally]          |   .cursorrules  |
-|                 |                               |                 |
-| Swarmcode  -----+--> git push manifest --> shared repo           |
-|                 |                               |                 |
-|                 |    shared repo <-- git pull manifest <-- Swarmcode
-+-----------------+                               +-----------------+
+Your AI client                         Swarmcode MCP Server
++------------------+                   +------------------+
+| Claude Code /    |  ---- stdio ----> | Reads git log    |
+| Cursor / etc.    |                   | Reads branches   |
+|                  |  <--- JSON -----  | Reads source     |
+| "Should I create |                   | Returns answer   |
+|  auth/login.ts?" |                   +------------------+
++------------------+
 ```
 
-**What gets shared:** Function names, file paths, who's working where, and what they're building — written as JSON manifests in `.swarmcode/peers/`. **Not** actual source code.
-
-**What doesn't get shared:** Your files. Git still handles that. Swarmcode shares the *map* (who's building what), not the *territory* (the actual code).
-
-**Only manifests are auto-committed.** Swarmcode only stages and commits files under `.swarmcode/peers/`. Your own code commits are left entirely to you.
-
-**Works anywhere git works:** LAN, VPN, remote teams, CI — no ports, no network configuration, no accounts.
-
-## The Flow
-
-Here's exactly what happens when you run `swarmcode start`:
-
-```
-1. WATCH      Swarmcode watches your project files for changes
-                        ↓
-2. EXTRACT    When a file changes, it parses exports and imports
-              (e.g. "TaskList exports: TaskList, imports: @/lib/types")
-                        ↓
-3. MANIFEST   Writes your file state to .swarmcode/peers/Jared.json
-              {
-                "name": "Jared",
-                "work_zone": "src/components",
-                "files": {
-                  "src/components/TaskList.tsx": {
-                    "exports": [{ "name": "TaskList", ... }],
-                    "imports": ["@/lib/types"]
-                  }
-                }
-              }
-                        ↓
-4. GIT SYNC   Every 30s: git add .swarmcode/peers/ → commit → pull → push
-              Only manifests are committed — your code is never auto-committed
-                        ↓
-5. READ       Reads all .swarmcode/peers/*.json from teammates
-              (these arrived via git pull)
-                        ↓
-6. INJECT     Generates a team context block and writes it to CLAUDE.md
-              Your AI now sees: "laptop built Task in src/lib/types.ts
-              — import from here, do not rebuild"
-```
-
-This cycle runs continuously. Steps 1-3 happen instantly on file change. Steps 4-6 happen every 30 seconds (configurable via `sync_interval`).
+**The key insight:** AI agents commit frequently. Git already knows who's working on what, which files are changing on which branches, and what functions exist. Swarmcode just makes that information available to your AI at the right time.
 
 ## Quick Start
 
@@ -81,187 +38,108 @@ This cycle runs continuously. Steps 1-3 happen instantly on file change. Steps 4
 npm install -g swarmcode
 ```
 
-Or clone and link locally:
+### 2. Add to your AI client's MCP config
+
+**Claude Code** (`~/.claude/settings.json` or project `.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "swarmcode": {
+      "command": "npx",
+      "args": ["swarmcode"]
+    }
+  }
+}
+```
+
+**Cursor** (MCP settings):
+```json
+{
+  "mcpServers": {
+    "swarmcode": {
+      "command": "npx",
+      "args": ["swarmcode"]
+    }
+  }
+}
+```
+
+That's it. No `init` command, no config files, no setup. The server starts when your AI session starts and stops when it ends.
+
+### 3. Everyone else does the same
+
+Each teammate installs swarmcode and adds it to their AI client config. As long as everyone pushes to the shared git remote, coordination happens automatically.
+
+## The 5 Tools
+
+Your AI calls these tools automatically based on server instructions:
+
+| Tool | When it's called | What it does |
+|------|-----------------|-------------|
+| `get_team_activity` | Start of session, "who's doing what?" | Shows active contributors, their branches, and work areas |
+| `check_path` | Before creating/modifying a file | Returns who owns this area, pending changes on other branches, risk assessment |
+| `search_team_code` | Before implementing something | Finds existing exports (functions, classes, types) across the codebase |
+| `check_conflicts` | Proactive health check | Detects files modified on multiple branches that may conflict |
+| `get_developer` | Drill-down on a teammate | Shows a developer's recent commits, branches, and work areas |
+
+All tools are **read-only**. Your work is shared when you commit and push as you normally would.
+
+## CLI
 
 ```bash
-git clone https://github.com/TellerTechnologies/swarmcode.git
-cd swarmcode
-npm install
-npm link
+# Start MCP server (used by AI clients, not typically run manually)
+swarmcode
+
+# Check team activity from the terminal
+swarmcode status
+swarmcode status --since 7d
 ```
-
-### 2. Initialize (once per project)
-
-In your project directory:
-
-```bash
-swarmcode init --name "Your Name"
-```
-
-This creates a `.swarmcode/config.yaml` file and the `.swarmcode/peers/` directory. The defaults work out of the box.
-
-After initializing, follow the printed instructions:
-
-- Commit `.swarmcode/peers/` to git so teammates can receive your manifest.
-- Add your context file (e.g., `CLAUDE.md`) to `.gitignore` — it is generated locally and should not be committed.
-
-### 3. Start
-
-```bash
-swarmcode start
-```
-
-That's it. Swarmcode writes your manifest, syncs it via git, reads your teammates' manifests, and keeps your AI's context file up to date. You'll see:
-
-```
-Starting swarmcode as "Jared"...
-Swarmcode started
-  Name: Jared
-  Watching: /path/to/your/project
-  Context: CLAUDE.md
-  Sync: every 30s
-```
-
-Now open your AI tool and start coding. Your AI's context file will automatically include what your teammates are working on.
-
-### 4. Everyone else does the same
-
-Each teammate clones the project, runs `swarmcode init --name "Their Name"`, and `swarmcode start`. No network configuration needed — if everyone can push and pull from the shared git remote, it just works.
 
 ## What Your AI Sees
 
-Swarmcode adds a section to your AI's context file (e.g., `CLAUDE.md`) that looks like this:
+When your AI is about to create `src/auth/login.ts`, it calls `check_path` and gets back:
 
-```markdown
-## Swarmcode Team Context
-
-The following teammates are working on this project.
-DO NOT rebuild what they have already built. Import from their modules instead.
-
-### Sarah (online)
-- Working in: src/auth/ — DO NOT create files in this directory without coordinating.
-- Intent: Building JWT-based authentication
-- Files already built:
-  - src/auth/login.ts exports: login, logout — import from here, do not rebuild.
-  - src/auth/middleware.ts exports: requireAuth — import from here, do not rebuild.
-
-### Mike (online)
-- Working in: src/components/
-- Files already built:
-  - src/components/Dashboard.tsx exports: Dashboard, StatCard
+```json
+{
+  "path": "src/auth/login.ts",
+  "primary_author": "Sarah",
+  "total_commits": 12,
+  "risk": "high",
+  "reason": "File is actively owned by Sarah with recent changes on branch feat/auth"
+}
 ```
 
-Your AI reads this and knows not to rebuild `login()` or create files in `src/auth/`.
-
-## Configuration
-
-Edit `.swarmcode/config.yaml`:
-
-```yaml
-# Your display name (shown to teammates)
-name: "Jared"
-
-# Which AI tool you use — determines which context file gets updated
-# Options: claude-code, cursor, copilot, custom
-ai_tool: "claude-code"
-
-# Files/directories to ignore (won't be tracked or shared)
-ignore:
-  - node_modules
-  - dist
-  - .git
-
-# How often to sync manifests via git and refresh the context file (seconds)
-sync_interval: 30
-
-# How often to generate AI summaries of your work (seconds)
-# Requires an LLM API key (see below)
-tier2_interval: 60
-tier3_interval: 300
-
-# Optional: LLM enrichment for richer context
-# Without this, Swarmcode still works — it just shares function names
-# and file paths instead of human-readable summaries
-enrichment:
-  provider: "none"          # "anthropic", "openai", or "none"
-  api_key_env: ""           # env var name containing your API key
-  tier2_model: ""           # model for 60s summaries
-  tier3_model: ""           # model for 5min cross-team analysis
-```
-
-### AI Tool Context Files
-
-| AI Tool | Context File | Set With |
-|---------|-------------|----------|
-| Claude Code | `CLAUDE.md` | `ai_tool: "claude-code"` |
-| Cursor | `.cursorrules` | `ai_tool: "cursor"` |
-| GitHub Copilot | `.github/copilot-instructions.md` | `ai_tool: "copilot"` |
-| Other | Any path | `context_file: "your/path.md"` |
-
-## Optional: Team Planning
-
-Create a `PLAN.md` in your project root before you start coding:
-
-```markdown
-# Project Plan
-
-## Features
-- **Auth system** - Jared
-- **Dashboard** - Sarah
-- **API endpoints** - Mike
-
-## Shared Types
-- User: { id, email, name, role }
-```
-
-Swarmcode reads this on startup and uses it to warn AIs when they stray outside their assigned areas. No special format required — just markdown.
-
-## CLI Commands
-
-| Command | What it does |
-|---------|-------------|
-| `swarmcode init` | Set up Swarmcode in current project |
-| `swarmcode start` | Start the agent (runs in foreground) |
-| `swarmcode start --name "Name"` | Start with a specific display name |
-| `swarmcode status` | Show who's online and what they're working on |
-
-## How Updates Work
-
-Swarmcode has two layers of intelligence:
-
-**Built-in (no API key needed):** File names, function signatures, exports, and imports are extracted instantly using regex-based parsing. This is the core — your AI will know exactly what functions exist, who created them, and where to import them from.
-
-**Optional LLM enrichment (needs API key):** If you configure an LLM provider, Swarmcode periodically asks it to summarize what each person is building (Tier 2, every 60s) and analyze the whole team for duplications or conflicts (Tier 3, every 5min). This adds human-readable context like "Building JWT authentication" instead of just raw function names.
-
-**The built-in layer is all most teams need.** LLM enrichment is a nice-to-have, not a requirement.
+Your AI now knows to import from Sarah's work instead of rebuilding it.
 
 ## Requirements
 
 - **Node.js 18+**
-- **A shared git repository** with a remote that all team members can push to and pull from
+- **A shared git repository** with a remote that all team members can push to
+- **An MCP-compatible AI client** (Claude Code, Cursor, VS Code with MCP support)
 
-## FAQ
+## How It Differs from v1
 
-**Does this replace git?**
-No. Git still handles all file merging and version control. Swarmcode uses git as its sync layer for manifests, and prevents conflicts *before* they reach your code by keeping AIs coordinated.
+The previous version used a background agent that watched files, wrote JSON manifests, synced them via git every 30 seconds, and injected markdown into CLAUDE.md/.cursorrules. That's all gone. The v2 architecture:
 
-**Does it sync my files?**
-No. It only shares metadata — function names, file paths, and summaries. Your actual source code stays on your machine until you push to git as you normally would.
+- **No background processes** — purely reactive to AI tool calls
+- **No manifest files** — no `.swarmcode/` directory
+- **No config files** — no `swarmcode init` needed
+- **No file injection** — MCP replaces CLAUDE.md/.cursorrules injection
+- **No LLM integration** — git metadata and source analysis are sufficient
 
-**What if someone goes offline?**
-Their last-known manifest is preserved in git. When they come back online and push a new manifest, everyone picks it up on the next sync. No manual steps needed.
+See [docs/design-decisions.md](docs/design-decisions.md) for the reasoning behind these changes.
 
-**Does everyone need to use the same AI tool?**
-No. Each person can use whatever they prefer. Swarmcode writes to the right context file for each tool.
+## Limitations
 
-**Do we need to be on the same network?**
-No. Swarmcode uses git as its transport layer, so it works wherever git works: same LAN, VPN, remote teams, or even CI environments.
+- **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. AI agents commit frequently, so this gap is usually small.
+- **Export search covers JS/TS/Python.** Other languages return no results from `search_team_code`.
+- **Remote branches required.** Conflict detection and path checking analyze remote branches — local-only branches from teammates aren't visible.
 
-**What gets committed to git?**
-Only the manifest files under `.swarmcode/peers/`. Swarmcode never touches your source code commits — those are always left to you.
+## Documentation
 
-**What should I add to `.gitignore`?**
-Your AI context file (e.g., `CLAUDE.md`, `.cursorrules`) — it is generated locally from peer manifests and will differ per machine. The `.swarmcode/peers/` directory should be tracked by git.
+- [Architecture](docs/architecture.md) — module map, tool details, how git parsing works
+- [Design Decisions](docs/design-decisions.md) — why stateless, why MCP, why no config
+- [Development Guide](docs/development.md) — setup, testing, adding new tools
 
 ## License
 
