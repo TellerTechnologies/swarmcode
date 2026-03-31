@@ -35,6 +35,9 @@ describe('swarmcode init', () => {
     expect(content).toContain('## Team Coordination (Swarmcode)');
     expect(content).toContain('enable_auto_push');
     expect(content).toContain('check_path');
+    expect(content).toContain('Recommended Project Structure');
+    expect(content).toContain('PLAN.md');
+    expect(content).toContain('specs/');
   });
 
   it('appends to existing CLAUDE.md', () => {

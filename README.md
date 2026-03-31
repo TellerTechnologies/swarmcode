@@ -60,6 +60,17 @@ swarmcode init --tool copilot   # writes to .github/copilot-instructions.md
 
 The init command only needs to run once — commit the context file so all teammates get the rules.
 
+It also adds a recommended project structure so `get_project_context` can find your docs:
+
+```
+your-project/
+├── README.md          — project overview
+├── PLAN.md            — project plan and team assignments
+├── CLAUDE.md          — AI coordination rules (created by swarmcode init)
+├── docs/              — architecture, design decisions, guides
+└── specs/             — design specifications
+```
+
 ### 3. Add to your AI client's MCP config
 
 **Claude Code** (`~/.claude/settings.json` or project `.mcp.json`):

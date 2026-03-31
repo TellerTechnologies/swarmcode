@@ -57,6 +57,16 @@ This project uses swarmcode for AI team coordination.
 - Before implementing a function/type/component, call \`search_team_code\`
 - Never rebuild something a teammate already built — import it
 - If check_path returns high risk, stop and ask the developer before proceeding
+
+### Recommended Project Structure
+
+Swarmcode scans these locations for project context:
+
+- \`README.md\` — project overview
+- \`PLAN.md\` — project plan and team assignments
+- \`docs/\` — architecture, design decisions, guides
+- \`specs/\` — design specifications
+- \`CLAUDE.md\` / \`.cursorrules\` — AI coordination rules
 `;
 
   const TOOL_FILES: Record<string, string> = {
