@@ -37,7 +37,9 @@ tests/
 │   ├── check-path.test.ts         Mocks git.ts, tests risk assessment
 │   ├── search-team-code.test.ts   Mocks git.ts + fs, tests export search pipeline
 │   ├── check-conflicts.test.ts    Mocks git.ts, tests branch conflict detection
-│   └── get-developer.test.ts      Mocks git.ts, tests fuzzy match + profile building
+│   ├── get-developer.test.ts      Mocks git.ts, tests fuzzy match + profile building
+│   └── auto-push.test.ts          Mocks git.ts, tests interval polling and push logic
+├── cli-init.test.ts               Runs real CLI against temp directories
 └── integration/
     └── mcp-server.test.ts         Real git repo, no mocks, end-to-end
 ```

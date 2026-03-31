@@ -52,7 +52,8 @@ src/
 │   ├── check-path.ts          git log + branch diffs → ownership + risk assessment
 │   ├── search-team-code.ts    source-parser + git metadata → export search with context
 │   ├── check-conflicts.ts     branch diffs → overlapping file changes
-│   └── get-developer.ts       git log --author → developer profile with fuzzy match
+│   ├── get-developer.ts       git log --author → developer profile with fuzzy match
+│   └── auto-push.ts           setInterval + git push → auto-push new commits
 │
 ├── types.ts            All type definitions (GitCommit, AuthorActivity, etc.)
 ├── index.ts            Public exports (VERSION + types)
@@ -60,7 +61,7 @@ src/
                         `swarmcode status` subcommand for terminal use.
 ```
 
-## The 5 tools
+## The tools
 
 | Tool | When the AI calls it | Core git operations |
 |------|---------------------|---------------------|
@@ -69,6 +70,8 @@ src/
 | `search_team_code` | Before implementing something | grep source files + `git log -1` per file |
 | `check_conflicts` | Proactive health check | `git merge-base` + `git diff` per active branch |
 | `get_developer` | Drill-down on a teammate | `git log --all --author=X` |
+| `enable_auto_push` | Start of session | `git rev-parse HEAD` (poll), `git push` |
+| `disable_auto_push` | End of session (optional) | Clears interval |
 
 All tools are read-only. The AI's work is shared when it commits normally.
 
@@ -105,7 +108,7 @@ Splitting on blank lines doesn't work because there are blank lines both within 
 
 ## What's NOT here
 
-- **No background processes** — the server is purely reactive
+- **Minimal background activity** — only auto-push runs a polling interval; all read tools are purely reactive
 - **No manifest files** — no `.swarmcode/` directory
 - **No config files** — no `swarmcode init` needed
 - **No LLM integration** — git metadata and source analysis are sufficient
