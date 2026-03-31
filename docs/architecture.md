@@ -36,7 +36,7 @@ This works because AI agents commit frequently. The window of "invisible uncommi
 
 ```
 src/
-├── server.ts           MCP server setup. Registers 7 tools with zod schemas.
+├── server.ts           MCP server setup. Registers 8 tools with zod schemas.
 │                       Entry point: createServer() → startServer()
 │
 ├── git.ts              All git commands go through here. Wraps execFileSync.
@@ -53,7 +53,8 @@ src/
 │   ├── search-team-code.ts    source-parser + git metadata → export search with context
 │   ├── check-conflicts.ts     branch diffs → overlapping file changes
 │   ├── get-developer.ts       git log --author → developer profile with fuzzy match
-│   └── auto-push.ts           setInterval + git push → auto-push new commits
+│   ├── auto-push.ts           setInterval + git push → auto-push new commits
+│   └── get-project-context.ts  reads docs/, specs/, READMEs → project context
 │
 ├── types.ts            All type definitions (GitCommit, AuthorActivity, etc.)
 ├── index.ts            Public exports (VERSION + types)
@@ -65,6 +66,7 @@ src/
 
 | Tool | When the AI calls it | Core git operations |
 |------|---------------------|---------------------|
+| `get_project_context` | Start of session, "what's the plan?" | `readdirSync` + `readFileSync` on doc dirs |
 | `get_team_activity` | Start of session, "who's doing what?" | `git log --all --since=X`, `git branch -r` |
 | `check_path` | Before creating/modifying a file | `git log --all -- <path>`, `git diff` per branch |
 | `search_team_code` | Before implementing something | grep source files + `git log -1` per file |

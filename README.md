@@ -94,6 +94,7 @@ Your AI calls these automatically based on server instructions and context file 
 
 | Tool | When it's called | What it does |
 |------|-----------------|-------------|
+| `get_project_context` | Start of session | Reads planning docs, specs, READMEs, and AI context files to understand the project |
 | `get_team_activity` | Start of session | Shows active contributors, their branches, and work areas |
 | `check_path` | Before creating/modifying a file | Returns who owns this area, pending changes, risk assessment |
 | `search_team_code` | Before implementing something | Finds existing exports (functions, classes, types) across the codebase |
@@ -153,6 +154,22 @@ When your AI is about to create `src/auth/login.ts`, it calls `check_path` and g
 ```
 
 Your AI now knows to import from Sarah's work instead of rebuilding it.
+
+When your AI starts a session, it calls `get_project_context` and gets back the project plan:
+
+```json
+{
+  "files": [
+    { "path": "README.md", "content": "# MyApp\n..." },
+    { "path": "CLAUDE.md", "content": "## Team Coordination...\n..." },
+    { "path": "specs/auth-design.md", "content": "# Auth System\n\n## Assigned to: Sarah\n..." }
+  ],
+  "total_files": 3,
+  "truncated": false
+}
+```
+
+Now your AI knows Sarah is assigned to auth — it won't start building auth independently.
 
 ## Requirements
 
