@@ -11,7 +11,7 @@
  *     checked out to main; the tool skips them gracefully
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
@@ -124,6 +124,7 @@ import { checkPath } from '../../src/tools/check-path.js';
 import { searchTeamCode } from '../../src/tools/search-team-code.js';
 import { checkConflicts } from '../../src/tools/check-conflicts.js';
 import { getDeveloper } from '../../src/tools/get-developer.js';
+import { enableAutoPush, disableAutoPush } from '../../src/tools/auto-push.js';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -256,5 +257,50 @@ describe('integration: tools against real git repo', () => {
     const result = getDeveloper({ name: 'alic' });
     expect(result.name).toBe('Alice');
     expect(result.recent_commits.length).toBeGreaterThan(0);
+  });
+
+  // Auto-push tests need a remote. Create a bare repo as "origin" and add it.
+  describe('auto-push with remote', () => {
+    let bareDir: string;
+
+    beforeAll(() => {
+      bareDir = mkdtempSync(join(tmpdir(), 'swarmcode-bare-'));
+      gitIn(bareDir, ['init', '--bare']);
+
+      // Add as remote to the test repo
+      gitIn(repoDir, ['remote', 'add', 'origin', bareDir]);
+
+      // Push main to origin so it exists
+      gitIn(repoDir, ['push', '-u', 'origin', 'main']);
+    });
+
+    afterAll(() => {
+      // Clean up: remove origin so it doesn't affect other tests
+      gitIn(repoDir, ['remote', 'remove', 'origin']);
+    });
+
+    it('enable_auto_push succeeds on a feature branch', () => {
+      gitIn(repoDir, ['checkout', '-b', 'feat/auto-push-test']);
+      try {
+        const result = enableAutoPush({});
+        expect(result.enabled).toBe(true);
+        expect(result.branch).toBe('feat/auto-push-test');
+        expect(result.interval).toBe(5);
+      } finally {
+        disableAutoPush();
+        gitIn(repoDir, ['checkout', 'main']);
+        gitIn(repoDir, ['branch', '-D', 'feat/auto-push-test']);
+      }
+    });
+
+    it('enable_auto_push rejects protected branch', () => {
+      expect(() => enableAutoPush({})).toThrow('protected branch');
+    });
+
+    it('disable_auto_push returns zero pushes when nothing happened', () => {
+      const result = disableAutoPush();
+      expect(result.enabled).toBe(false);
+      expect(result.pushes_made).toBe(0);
+    });
   });
 });
