@@ -72,3 +72,16 @@ export interface DeveloperProfile {
   work_areas: string[];
   files: string[];
 }
+
+export interface AutoPushResult {
+  enabled: boolean;
+  already_enabled?: boolean;
+  branch: string;
+  interval: number;
+  protected_branches: string[];
+}
+
+export interface AutoPushDisableResult {
+  enabled: false;
+  pushes_made: number;
+}

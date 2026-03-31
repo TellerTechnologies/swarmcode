@@ -11,4 +11,6 @@ export type {
   ConflictEntry,
   ConflictReport,
   DeveloperProfile,
+  AutoPushResult,
+  AutoPushDisableResult,
 } from './types.js';
