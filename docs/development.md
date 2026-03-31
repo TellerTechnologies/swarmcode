@@ -42,7 +42,8 @@ tests/
 │   └── get-project-context.test.ts  Real filesystem tests against temp directories
 ├── cli-init.test.ts               Runs real CLI against temp directories
 └── integration/
-    └── mcp-server.test.ts         Real git repo, no mocks, end-to-end
+    ├── mcp-server.test.ts         Real git repo, no mocks, end-to-end
+    └── two-agents.test.ts         Two cloned repos, multi-agent coordination
 ```
 
 **Unit tests** mock `git.ts` (via `vi.mock('../../src/git.js')`) so they run instantly without touching the filesystem.

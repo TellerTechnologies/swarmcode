@@ -40,12 +40,12 @@ src/
 │                       Entry point: createServer() → startServer()
 │
 ├── git.ts              All git commands go through here. Wraps execFileSync.
-│                       12 exported functions. No shell injection (execFileSync, not execSync).
+│                       16 exported functions. No shell injection (execFileSync, not execSync).
 │                       Key detail: getLog() uses a sentinel string to parse --name-only
 │                       output reliably (git puts blank lines both within and between commits).
 │
-├── source-parser.ts    Regex-based export search. Supports JS/TS/Python.
-│                       Used by search_team_code tool to find matching exports.
+├── source-parser.ts    Regex-based export search. 14 languages supported
+│                       (JS/TS/Python/Go/Rust/Ruby/PHP/Java/Kotlin/C#/Swift/C++/Elixir/Scala).
 │
 ├── tools/
 │   ├── get-team-activity.ts   git log → group by author → work areas, branches
@@ -112,14 +112,14 @@ Splitting on blank lines doesn't work because there are blank lines both within 
 
 - **Minimal background activity** — only auto-push runs a polling interval; all read tools are purely reactive
 - **No manifest files** — no `.swarmcode/` directory
-- **No config files** — no `swarmcode init` needed
-- **No LLM integration** — git metadata and source analysis are sufficient
-- **No caching** — every tool call queries git fresh (~50-200ms, fast enough)
-- **No write operations** — all tools are read-only
+- **No config files** — `swarmcode init` appends to your AI context file but creates no swarmcode-specific config
+- **No LLM integration** — git metadata, source analysis, and doc scanning are sufficient
+- **No caching** — every tool call queries git/filesystem fresh (~50-200ms, fast enough)
+- **One write operation** — auto-push runs `git push`; all other tools are read-only
 
 ## Limitations
 
 - **Only sees committed + pushed work.** If a teammate is coding but hasn't pushed, you won't see their changes. AI agents commit frequently, so this gap is usually small.
 - **Remote branches required for conflict detection.** `check_conflicts` and `check_path` analyze remote branches. Local-only branches from teammates aren't visible (they need to push).
-- **Export search only covers JS/TS/Python.** The regex patterns in source-parser.ts handle common export patterns. Other languages return no results.
+- **Export search uses regex, not AST.** Covers 14 languages but only common declaration patterns. Unusual or dynamic exports won't be detected.
 - **Large repos may be slower.** `git log --all` on repos with thousands of commits could take >200ms. Not a problem in practice since tool calls are infrequent.
