@@ -46,6 +46,7 @@ export interface ExportMatch {
   last_modified_by: string;
   last_modified_at: number;
   in_flux: boolean;
+  branch?: string;
 }
 
 export interface ConflictEntry {

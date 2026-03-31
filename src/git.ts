@@ -166,6 +166,10 @@ export function getLastModifier(filePath: string): { author: string; timestamp: 
   return { author, timestamp };
 }
 
+export function getFileFromBranch(branch: string, path: string): string | null {
+  return runOrNull(['show', `${branch}:${path}`]);
+}
+
 export function getStatusForPath(path: string): string[] {
   const args = ['status', '--porcelain', '--', path];
   const output = runRaw(args);

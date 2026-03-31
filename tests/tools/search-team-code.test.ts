@@ -18,6 +18,7 @@ beforeEach(() => {
   mockGit.getLog.mockReturnValue([]);
   mockGit.getLastModifier.mockReturnValue(null);
   mockGit.getFilesChangedOnBranch.mockReturnValue([]);
+  mockGit.getFileFromBranch.mockReturnValue(null);
 });
 
 describe('searchTeamCode', () => {
@@ -242,5 +243,113 @@ describe('searchTeamCode', () => {
     expect(result).toHaveLength(1);
     expect(result[0].last_modified_by).toBe('');
     expect(result[0].last_modified_at).toBe(0);
+  });
+
+  it('finds exports on remote branches via git show', () => {
+    // No local files to find
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feat/auth']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue(['src/auth/login.ts']);
+    mockGit.getFileFromBranch.mockReturnValue(
+      'export function login(user: string): Promise<Token> { return fetch("/login") as any; }\n',
+    );
+
+    const result = searchTeamCode({ query: 'login' });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].file).toBe('src/auth/login.ts');
+    expect(result[0].name).toBe('login');
+    expect(result[0].branch).toBe('origin/feat/auth');
+    expect(result[0].in_flux).toBe(true);
+  });
+
+  it('deduplicates: local result wins over branch result for same file+name', () => {
+    mockGit.getLog.mockReturnValue([
+      {
+        hash: 'i1',
+        author: 'Alice',
+        email: 'alice@example.com',
+        timestamp: 9000,
+        message: 'feat: add login',
+        files: ['src/auth/login.ts'],
+      },
+    ]);
+    mockGit.getLastModifier.mockReturnValue({ author: 'Alice', timestamp: 9000 });
+    mockReadFileSync.mockReturnValue(
+      'export function login(user: string): Promise<Token> { return fetch("/login") as any; }\n',
+    );
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feat/auth']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue(['src/auth/login.ts']);
+    mockGit.getFileFromBranch.mockReturnValue(
+      'export function login(user: string, timeout?: number): Promise<Token> { return fetch("/login") as any; }\n',
+    );
+
+    const result = searchTeamCode({ query: 'login' });
+
+    // Should only appear once — the local version
+    const loginResults = result.filter((r) => r.name === 'login');
+    expect(loginResults).toHaveLength(1);
+    expect(loginResults[0].branch).toBeUndefined();
+    expect(loginResults[0].last_modified_by).toBe('Alice');
+  });
+
+  it('branch results have no branch field when found locally', () => {
+    mockGit.getLog.mockReturnValue([
+      {
+        hash: 'j1',
+        author: 'Bob',
+        email: 'bob@example.com',
+        timestamp: 10000,
+        message: 'feat: utils',
+        files: ['src/utils.ts'],
+      },
+    ]);
+    mockGit.getLastModifier.mockReturnValue({ author: 'Bob', timestamp: 10000 });
+    mockReadFileSync.mockReturnValue('export function formatDate(): string { return ""; }\n');
+
+    const result = searchTeamCode({ query: 'format' });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].branch).toBeUndefined();
+  });
+
+  it('respects path filter for branch search', () => {
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feat/auth']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue([
+      'src/auth/login.ts',
+      'src/utils/helpers.ts',
+    ]);
+    mockGit.getFileFromBranch.mockReturnValue(
+      'export function doSomething(): void {}\n',
+    );
+
+    const result = searchTeamCode({ query: 'doSomething', path: 'src/auth' });
+
+    // Only src/auth/login.ts matches the path filter
+    const files = result.map((r) => r.file);
+    expect(files.every((f) => f.startsWith('src/auth'))).toBe(true);
+  });
+
+  it('skips branch files when getFileFromBranch returns null', () => {
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feat/deleted']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue(['src/gone.ts']);
+    mockGit.getFileFromBranch.mockReturnValue(null);
+
+    const result = searchTeamCode({ query: 'anything' });
+
+    expect(result).toEqual([]);
+  });
+
+  it('skips unsupported file types on branches', () => {
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feat/data']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue(['data/config.yaml', 'data/notes.txt']);
+    mockGit.getFileFromBranch.mockReturnValue('some content');
+
+    const result = searchTeamCode({ query: 'anything' });
+
+    expect(result).toEqual([]);
   });
 });

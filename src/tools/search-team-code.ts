@@ -39,8 +39,10 @@ export function searchTeamCode(params: { query: string; path?: string }): Export
     branchFileMap.set(branch, new Set(changedFiles));
   }
 
-  // 5. For each unique file, search for exports matching the query
+  // 5. For each unique file, search for exports matching the query (local files)
   const results: ExportMatch[] = [];
+  // Track file+name combos found locally for deduplication against branch results
+  const localKeys = new Set<string>();
 
   for (const file of uniqueFiles) {
     // Detect language — skip if not recognised
@@ -69,6 +71,7 @@ export function searchTeamCode(params: { query: string; path?: string }): Export
 
     // Create an ExportMatch for each matching export
     for (const match of matches) {
+      localKeys.add(`${file}:${match.name}`);
       results.push({
         file,
         name: match.name,
@@ -77,6 +80,49 @@ export function searchTeamCode(params: { query: string; path?: string }): Export
         last_modified_at,
         in_flux,
       });
+    }
+  }
+
+  // 6. Search files on remote branches that aren't available locally
+  for (const [branch, changedFiles] of branchFileMap) {
+    for (const file of changedFiles) {
+      // Apply path filter
+      if (params.path !== undefined) {
+        if (file !== params.path && !file.startsWith(params.path + '/')) {
+          continue;
+        }
+      }
+
+      // Detect language — skip if not recognised
+      const language = detectLanguage(file);
+      if (!language) continue;
+
+      // Read file contents from the remote branch
+      const code = git.getFileFromBranch(branch, file);
+      if (!code) continue;
+
+      // Search for matching exports
+      const matches = searchExports(code, language, params.query);
+      if (matches.length === 0) continue;
+
+      for (const match of matches) {
+        // Deduplicate: skip if we already found this file+name locally
+        const key = `${file}:${match.name}`;
+        if (localKeys.has(key)) continue;
+
+        // Mark as found so subsequent branches don't duplicate
+        localKeys.add(key);
+
+        results.push({
+          file,
+          name: match.name,
+          signature: match.signature,
+          last_modified_by: '',
+          last_modified_at: 0,
+          in_flux: true,
+          branch,
+        });
+      }
     }
   }
 
