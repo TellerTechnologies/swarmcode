@@ -35,7 +35,10 @@ Your AI client                         Swarmcode MCP Server
 ### 1. Install
 
 ```bash
-npm install -g swarmcode
+git clone https://github.com/TellerTechnologies/swarmcode.git
+cd swarmcode
+npm install
+npm link
 ```
 
 ### 2. Add to your AI client's MCP config
@@ -45,8 +48,7 @@ npm install -g swarmcode
 {
   "mcpServers": {
     "swarmcode": {
-      "command": "npx",
-      "args": ["swarmcode"]
+      "command": "swarmcode"
     }
   }
 }
@@ -57,14 +59,13 @@ npm install -g swarmcode
 {
   "mcpServers": {
     "swarmcode": {
-      "command": "npx",
-      "args": ["swarmcode"]
+      "command": "swarmcode"
     }
   }
 }
 ```
 
-That's it. No `init` command, no config files, no setup. The server starts when your AI session starts and stops when it ends.
+No `init` command, no config files, no setup. The server starts when your AI session starts and stops when it ends.
 
 ### 3. Everyone else does the same
 
