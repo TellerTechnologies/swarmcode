@@ -52,6 +52,7 @@ export function createCLI(): Command {
 This project uses swarmcode for AI team coordination.
 
 - At the start of every session, call \`enable_auto_push\` and \`get_team_activity\`
+- At the start of every session, call \`get_project_context\` to understand the project plan
 - Before creating or modifying any file, call \`check_path\`
 - Before implementing a function/type/component, call \`search_team_code\`
 - Never rebuild something a teammate already built — import it
