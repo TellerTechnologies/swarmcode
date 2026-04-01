@@ -3,13 +3,22 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as git from '../git.js';
-import { getTeamActivity } from '../tools/get-team-activity.js';
 import { checkConflicts } from '../tools/check-conflicts.js';
 import { getProjectContext } from '../tools/get-project-context.js';
-import type { AuthorActivity, ConflictReport, ProjectContextResult } from '../types.js';
+import { getLinearData, isConfigured as linearConfigured, type LinearData } from '../linear.js';
+import type { ConflictReport, ProjectContextResult, GitCommit } from '../types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+export interface DashboardAuthor {
+  name: string;
+  active_branches: string[];
+  work_areas: string[];
+  recent_files: string[];
+  last_active: number;
+  recent_commits: Array<{ message: string; timestamp: number; hash: string }>;
+}
 
 export interface BranchTimelineEntry {
   name: string;
@@ -22,12 +31,89 @@ export interface BranchTimelineEntry {
 }
 
 export interface DashboardData {
-  activity: AuthorActivity[];
+  activity: DashboardAuthor[];
   conflicts: ConflictReport;
   branches: BranchTimelineEntry[];
   context: ProjectContextResult;
+  linear: LinearData | null;
   repo: string;
   timestamp: number;
+}
+
+/**
+ * Dashboard-specific team activity — includes ALL developers (including current user)
+ * and returns richer data (commit hashes, work areas, more commits).
+ */
+function getDashboardActivity(): DashboardAuthor[] {
+  const commits = git.getLog({ all: true, since: '7d' });
+  const activeBranches = git.getActiveRemoteBranches();
+
+  const byAuthor = new Map<string, GitCommit[]>();
+  for (const commit of commits) {
+    const existing = byAuthor.get(commit.author);
+    if (existing) {
+      existing.push(commit);
+    } else {
+      byAuthor.set(commit.author, [commit]);
+    }
+  }
+
+  const results: DashboardAuthor[] = [];
+
+  for (const [author, authorCommits] of byAuthor) {
+    const authorBranches = activeBranches.filter(
+      (branch) => git.getBranchAuthor(branch) === author,
+    );
+
+    const allFiles: string[] = [];
+    for (const commit of authorCommits) {
+      allFiles.push(...commit.files);
+    }
+
+    // Infer work areas (top directories by frequency)
+    const dirCounts = new Map<string, number>();
+    for (const file of allFiles) {
+      const lastSlash = file.lastIndexOf('/');
+      if (lastSlash === -1) continue;
+      const dir = file.slice(0, lastSlash);
+      dirCounts.set(dir, (dirCounts.get(dir) ?? 0) + 1);
+    }
+    const workAreas = [...dirCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([dir]) => dir);
+
+    // Unique recent files
+    const seen = new Set<string>();
+    const recentFiles: string[] = [];
+    for (const file of allFiles) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+      recentFiles.push(file);
+      if (recentFiles.length >= 20) break;
+    }
+
+    const lastActive = Math.max(...authorCommits.map((c) => c.timestamp));
+
+    // More commits with hashes for the dashboard
+    const recentCommits = authorCommits.slice(0, 10).map((c) => ({
+      message: c.message,
+      timestamp: c.timestamp,
+      hash: c.hash.slice(0, 7),
+    }));
+
+    results.push({
+      name: author,
+      active_branches: authorBranches,
+      work_areas: workAreas,
+      recent_files: recentFiles,
+      last_active: lastActive,
+      recent_commits: recentCommits,
+    });
+  }
+
+  results.sort((a, b) => b.last_active - a.last_active);
+  return results;
 }
 
 function getBranchTimeline(): BranchTimelineEntry[] {
@@ -46,7 +132,7 @@ function getBranchTimeline(): BranchTimelineEntry[] {
     if (shortName === mainShort) continue;
 
     const author = git.getBranchAuthor(branch) ?? 'unknown';
-    const commits = git.getBranchLog(branch, '14d');
+    const commits = git.getBranchLog(branch, '48h');
     const { ahead, behind } = git.getBranchAheadBehind(branch, mainBranch);
 
     // Skip branches with no activity and no divergence
@@ -79,17 +165,42 @@ function getBranchTimeline(): BranchTimelineEntry[] {
   return entries;
 }
 
-function getAllData(): DashboardData {
+// Cache Linear data separately (API call is slower than git)
+let cachedLinear: LinearData | null = null;
+let linearFetchedAt = 0;
+const LINEAR_STALENESS_SECS = 60; // refresh Linear every 60s
+
+async function fetchLinearIfNeeded(): Promise<LinearData | null> {
+  if (!linearConfigured()) return null;
+
+  const now = Date.now() / 1000;
+  if (now - linearFetchedAt < LINEAR_STALENESS_SECS) return cachedLinear;
+
+  try {
+    cachedLinear = await getLinearData();
+    linearFetchedAt = now;
+  } catch (err: any) {
+    console.error(`[swarmcode] Linear fetch failed: ${err.message}`);
+    // Keep stale cache if we have it
+  }
+
+  return cachedLinear;
+}
+
+async function getAllData(): Promise<DashboardData> {
   git.ensureFresh();
 
   const repoRoot = git.getRepoRoot() ?? process.cwd();
   const repo = repoRoot.split('/').pop() ?? 'unknown';
 
+  const linear = await fetchLinearIfNeeded();
+
   return {
-    activity: getTeamActivity({ since: '24h' }),
+    activity: getDashboardActivity(),
     conflicts: checkConflicts(),
     branches: getBranchTimeline(),
     context: getProjectContext({}),
+    linear,
     repo,
     timestamp: Date.now(),
   };
@@ -103,7 +214,7 @@ function sendJson(res: ServerResponse, data: unknown): void {
   res.end(JSON.stringify(data));
 }
 
-function handleRequest(req: IncomingMessage, res: ServerResponse, html: string): void {
+async function handleRequest(req: IncomingMessage, res: ServerResponse, html: string): Promise<void> {
   const url = req.url ?? '/';
 
   if (url === '/' || url === '/index.html') {
@@ -113,7 +224,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse, html: string):
   }
 
   if (url === '/api/all') {
-    sendJson(res, getAllData());
+    sendJson(res, await getAllData());
     return;
   }
 
@@ -126,12 +237,14 @@ function handleRequest(req: IncomingMessage, res: ServerResponse, html: string):
     });
 
     // Send initial data
-    res.write(`data: ${JSON.stringify(getAllData())}\n\n`);
+    const initial = await getAllData();
+    res.write(`data: ${JSON.stringify(initial)}\n\n`);
 
     // Push updates every 30 seconds
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       try {
-        res.write(`data: ${JSON.stringify(getAllData())}\n\n`);
+        const data = await getAllData();
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
       } catch {
         clearInterval(interval);
       }

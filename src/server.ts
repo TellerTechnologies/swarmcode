@@ -10,6 +10,14 @@ import { getDeveloper } from './tools/get-developer.js';
 import { enableAutoPush, disableAutoPush } from './tools/auto-push.js';
 import { getProjectContext } from './tools/get-project-context.js';
 import { checkAll } from './tools/check-all.js';
+import {
+  isConfigured as linearConfigured,
+  getLinearData,
+  startIssue,
+  completeIssue,
+  updateIssueStatus,
+  commentOnIssue,
+} from './linear.js';
 
 export function createServer(): McpServer {
   const server = new McpServer(
@@ -27,6 +35,13 @@ export function createServer(): McpServer {
         'Commit early and often — after each logical unit of work (new function, bug fix, test added, file created).',
         'Small, frequent commits are pushed automatically and let teammates see your progress in real-time.',
         'Waiting until the end to commit one large changeset defeats coordination — teammates cannot see or avoid your work.',
+        '',
+        'If Linear is configured:',
+        '- At the start of a session → call linear_get_issues to see what is assigned and available',
+        '- Before starting work → call linear_start_issue to claim the ticket and move it to In Progress',
+        '- After meaningful progress → call linear_comment to log what was done',
+        '- When the work is complete and merged → call linear_complete_issue to mark it Done',
+        '- Do not work on issues that are already In Progress and assigned to someone else',
       ].join('\n'),
     },
   );
@@ -171,6 +186,107 @@ export function createServer(): McpServer {
       }
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Linear tools (only registered if API key is configured)
+  // ---------------------------------------------------------------------------
+
+  if (linearConfigured()) {
+    server.registerTool(
+      'linear_get_issues',
+      {
+        title: 'Linear: Get Issues',
+        description: 'Fetch active issues from Linear (In Progress + Todo). Shows identifier, title, assignee, status, and priority. Use at session start to see what work is available.',
+        inputSchema: {},
+      },
+      async () => {
+        try {
+          const data = await getLinearData();
+          return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_start_issue',
+      {
+        title: 'Linear: Start Issue',
+        description: 'Claim a Linear issue and move it to In Progress. Assigns it to you and updates the status. Call this before starting work on a ticket.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+        },
+      },
+      async ({ issue }) => {
+        try {
+          const result = await startIssue(issue);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_complete_issue',
+      {
+        title: 'Linear: Complete Issue',
+        description: 'Mark a Linear issue as Done. Call this when the work is complete, tests pass, and the branch is merged.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+        },
+      },
+      async ({ issue }) => {
+        try {
+          const result = await completeIssue(issue);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_update_status',
+      {
+        title: 'Linear: Update Status',
+        description: 'Move a Linear issue to a specific status. Use when the standard start/complete flow does not apply (e.g. marking as cancelled or moving back to todo).',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          status: z.string().describe('Target status type: "unstarted", "started", "completed", or "cancelled"'),
+        },
+      },
+      async ({ issue, status }) => {
+        try {
+          const result = await updateIssueStatus(issue, status);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_comment',
+      {
+        title: 'Linear: Comment',
+        description: 'Add a comment to a Linear issue. Use to log progress, note blockers, or summarize what was done. Supports markdown.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          body: z.string().describe('Comment body (markdown supported)'),
+        },
+      },
+      async ({ issue, body }) => {
+        try {
+          const result = await commentOnIssue(issue, body);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+  }
 
   return server;
 }

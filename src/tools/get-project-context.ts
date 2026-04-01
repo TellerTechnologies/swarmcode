@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname, relative } from 'node:path';
 import type { ProjectContextResult, ProjectContextFile } from '../types.js';
+import { getLinearData, formatAsMarkdown, isConfigured as linearConfigured } from '../linear.js';
 
 const MAX_FILE_SIZE = 50 * 1024; // 50KB per file
 const MAX_TOTAL_SIZE = 200 * 1024; // 200KB total output
@@ -156,9 +157,51 @@ export function getProjectContext(opts: {
     }
   }
 
+  // Include cached Linear data if available
+  if (linearConfigured() && !truncated) {
+    const linearContent = getCachedLinearMarkdown();
+    if (linearContent) {
+      const linearFile: ProjectContextFile = { path: '[linear] Active Issues', content: linearContent };
+      if (totalSize + linearContent.length <= MAX_TOTAL_SIZE) {
+        files.push(linearFile);
+      }
+    }
+  }
+
   return {
     files,
     total_files: files.length,
     truncated,
   };
+}
+
+// --- Linear cache for sync access ---
+// Linear data is fetched async and cached. The MCP tool reads from cache.
+// The cache is refreshed in the background every 60 seconds.
+
+let linearCache: string | null = null;
+let linearCacheAge = 0;
+
+function getCachedLinearMarkdown(): string | null {
+  const now = Date.now() / 1000;
+
+  // Trigger background refresh if stale (>60s) or never fetched
+  if (now - linearCacheAge > 60) {
+    refreshLinearCache();
+  }
+
+  return linearCache;
+}
+
+function refreshLinearCache(): void {
+  linearCacheAge = Date.now() / 1000; // prevent concurrent fetches
+  getLinearData()
+    .then((data) => {
+      if (data) {
+        linearCache = formatAsMarkdown(data);
+      }
+    })
+    .catch(() => {
+      // Keep stale cache on error
+    });
 }

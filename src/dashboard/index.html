@@ -177,6 +177,46 @@
     top: -2px;
   }
 
+  .dev-work-areas {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .dev-commits {
+    list-style: none;
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+
+  .dev-commits li {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 3px 0;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .dev-commits .commit-hash {
+    font-family: var(--mono);
+    color: var(--blue);
+    flex-shrink: 0;
+  }
+
+  .dev-commits .commit-msg {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dev-commits .commit-time {
+    color: var(--text-dim);
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
   /* Panel: Conflict Radar */
   #conflicts { grid-column: 2; grid-row: 1; }
 
@@ -490,6 +530,102 @@
     font-size: 14px;
   }
 
+  /* Panel: Linear Issues */
+  #linear {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  #context {
+    grid-row: 4;
+  }
+
+  .linear-cycle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  .linear-cycle strong { color: var(--text); }
+
+  .linear-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 16px 0 8px;
+  }
+
+  .linear-section-title:first-of-type { margin-top: 0; }
+
+  .linear-issue {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s;
+  }
+
+  .linear-issue:hover { border-color: var(--text-dim); }
+
+  .linear-id {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--purple);
+    flex-shrink: 0;
+    min-width: 70px;
+  }
+
+  .linear-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .linear-assignee {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .linear-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .linear-status.started {
+    background: rgba(63, 185, 80, 0.12);
+    color: var(--green);
+  }
+
+  .linear-status.unstarted {
+    background: rgba(139, 148, 158, 0.12);
+    color: var(--text-muted);
+  }
+
+  .linear-priority {
+    font-size: 11px;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+  }
+
+  .linear-priority.p1 { color: var(--red); }
+  .linear-priority.p2 { color: var(--orange); }
+  .linear-priority.p3 { color: var(--yellow); }
+  .linear-priority.p4 { color: var(--text-dim); }
+
   /* Responsive */
   @media (max-width: 900px) {
     .grid {
@@ -528,6 +664,12 @@
     <div class="panel-title">Branch Timeline <span class="count" id="branchCount">0</span></div>
     <div class="timeline-axis" id="timelineAxis"></div>
     <div class="timeline-container" id="timelineContent"></div>
+  </section>
+
+  <section class="panel" id="linear" style="display:none">
+    <div class="panel-title">Linear <span class="count" id="linearCount">0</span></div>
+    <div id="linearCycle"></div>
+    <div id="linearContent"></div>
   </section>
 
   <section class="panel" id="context">
@@ -609,13 +751,15 @@ function renderActivity(data) {
   document.getElementById('activityCount').textContent = data.length;
 
   if (data.length === 0) {
-    el.innerHTML = '<div class="empty-state">No team activity in the last 24 hours</div>';
+    el.innerHTML = '<div class="empty-state">No team activity in the last 7 days</div>';
     return;
   }
 
   el.innerHTML = data.map(dev => {
     const branches = dev.active_branches.map(b => b.replace(/^origin\//, '')).join(', ');
-    const files = dev.recent_files.slice(0, 8);
+    const files = dev.recent_files.slice(0, 6);
+    const commits = dev.recent_commits || [];
+    const workAreas = dev.work_areas || [];
 
     return `
       <div class="dev-card">
@@ -626,9 +770,21 @@ function renderActivity(data) {
           </div>
           ${branches ? `<span class="dev-branch">${escHtml(branches)}</span>` : ''}
         </div>
+        ${workAreas.length ? `<div class="dev-work-areas">Working in: ${workAreas.map(w => escHtml(w)).join(', ')}</div>` : ''}
         <ul class="dev-files">
           ${files.map(f => `<li>${escHtml(f)}</li>`).join('')}
         </ul>
+        ${commits.length ? `
+          <ul class="dev-commits">
+            ${commits.slice(0, 5).map(c => `
+              <li>
+                <span class="commit-hash">${c.hash || ''}</span>
+                <span class="commit-msg">${escHtml(c.message)}</span>
+                <span class="commit-time">${timeAgo(c.timestamp)}</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : ''}
       </div>
     `;
   }).join('');
@@ -673,16 +829,20 @@ function renderTimeline(branches) {
     return;
   }
 
-  // Time range: last 14 days
+  // Time range: last 48 hours
   const now = Date.now() / 1000;
-  const rangeStart = now - 14 * 86400;
+  const rangeStart = now - 48 * 3600;
   const rangeEnd = now;
 
-  // Axis labels
+  // Axis labels: every 6 hours over 48h
   const labels = [];
-  for (let i = 14; i >= 0; i -= 2) {
-    const d = new Date((now - i * 86400) * 1000);
-    labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  for (let i = 48; i >= 0; i -= 6) {
+    const d = new Date((now - i * 3600) * 1000);
+    if (i === 48 || i === 24 || i === 0) {
+      labels.push(d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric' }));
+    } else {
+      labels.push(d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+    }
   }
   axisEl.innerHTML = labels.map(l => `<span>${l}</span>`).join('');
 
@@ -693,8 +853,8 @@ function renderTimeline(branches) {
 
       const age = now - c.timestamp;
       let dotClass = 'stale';
-      if (age < 3600) dotClass = 'recent';
-      else if (age < 86400) dotClass = 'today';
+      if (age < 1800) dotClass = 'recent';       // last 30 min
+      else if (age < 6 * 3600) dotClass = 'today'; // last 6 hours
 
       return `
         <div class="timeline-dot ${dotClass}" style="left: ${pct}%">
@@ -727,6 +887,65 @@ function renderTimeline(branches) {
       </div>
     `;
   }).join('');
+}
+
+const PRIORITY_LABELS = { 1: '!!!', 2: '!!', 3: '!', 4: '' };
+const PRIORITY_CLASSES = { 1: 'p1', 2: 'p2', 3: 'p3', 4: 'p4' };
+
+function renderLinear(data) {
+  const panel = document.getElementById('linear');
+  const el = document.getElementById('linearContent');
+  const cycleEl = document.getElementById('linearCycle');
+
+  if (!data || !data.issues || data.issues.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = '';
+  document.getElementById('linearCount').textContent = data.issues.length;
+
+  // Cycle info
+  if (data.cycle) {
+    const endDate = data.cycle.endsAt
+      ? new Date(data.cycle.endsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '';
+    cycleEl.innerHTML = `<div class="linear-cycle"><strong>${escHtml(data.cycle.name || 'Current Cycle')}</strong>${endDate ? ` — ends ${endDate}` : ''}</div>`;
+  } else {
+    cycleEl.innerHTML = '';
+  }
+
+  const inProgress = data.issues.filter(i => i.statusType === 'started');
+  const todo = data.issues.filter(i => i.statusType === 'unstarted');
+
+  let html = '';
+
+  if (inProgress.length > 0) {
+    html += '<div class="linear-section-title">In Progress</div>';
+    html += inProgress.map(renderLinearIssue).join('');
+  }
+
+  if (todo.length > 0) {
+    html += '<div class="linear-section-title">Todo</div>';
+    html += todo.map(renderLinearIssue).join('');
+  }
+
+  el.innerHTML = html;
+}
+
+function renderLinearIssue(issue) {
+  const pLabel = PRIORITY_LABELS[issue.priority] || '';
+  const pClass = PRIORITY_CLASSES[issue.priority] || '';
+
+  return `
+    <a class="linear-issue" href="${escHtml(issue.url)}" target="_blank" title="${escHtml(issue.title)}">
+      ${pLabel ? `<span class="linear-priority ${pClass}">${pLabel}</span>` : ''}
+      <span class="linear-id">${escHtml(issue.identifier)}</span>
+      <span class="linear-title">${escHtml(issue.title)}</span>
+      ${issue.assignee ? `<span class="linear-assignee">${escHtml(issue.assignee)}</span>` : ''}
+      <span class="linear-status ${issue.statusType}">${escHtml(issue.status)}</span>
+    </a>
+  `;
 }
 
 let activeContextFile = 0;
@@ -768,6 +987,7 @@ function render(data) {
   renderActivity(data.activity);
   renderConflicts(data.conflicts);
   renderTimeline(data.branches);
+  renderLinear(data.linear);
   renderContext(data.context);
 }
 
