@@ -113,9 +113,28 @@ npx tsx bin/swarmcode.ts
 # Or test the CLI status command
 npx tsx bin/swarmcode.ts status
 npx tsx bin/swarmcode.ts status --since 7d
+
+# Launch the web dashboard
+npx tsx bin/swarmcode.ts dashboard
+npx tsx bin/swarmcode.ts dashboard --port 8080
 ```
 
 The MCP server expects JSON-RPC messages on stdin. For real testing, use an MCP client or configure it in Claude Code's MCP settings.
+
+## Dashboard development
+
+The dashboard lives in `src/dashboard/`:
+
+- `server.ts` — Node `http` server with routes for `/` (HTML), `/api/all` (JSON), and `/events` (SSE)
+- `index.html` — single-page frontend with inlined CSS and JS
+
+To iterate on the dashboard:
+
+1. Run `npx tsx bin/swarmcode.ts dashboard` from a git repository
+2. Open `http://localhost:3000` in a browser
+3. Edit `src/dashboard/index.html` — restart the server to see changes
+
+The frontend has no build step, no bundler, and no external dependencies. Markdown rendering is handled by a minimal inline renderer. The dark theme uses GitHub dark color tokens (CSS custom properties in `:root`).
 
 ## Project conventions
 

@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swarmcode Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-hover: #1c2129;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #484f58;
+    --green: #3fb950;
+    --green-dim: #238636;
+    --yellow: #d29922;
+    --yellow-dim: #9e6a03;
+    --red: #f85149;
+    --red-dim: #da3633;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --orange: #f0883e;
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, Consolas, monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    display: inline-block;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .status-dot.disconnected { background: var(--red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .header-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* Grid layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 57px);
+  }
+
+  .panel {
+    background: var(--bg);
+    padding: 20px 24px;
+    overflow: auto;
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title .count {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* Panel: Team Activity */
+  #activity { grid-column: 1; grid-row: 1; }
+
+  .dev-card {
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+  }
+
+  .dev-card:hover { border-color: var(--text-dim); }
+
+  .dev-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .dev-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .dev-branch {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--blue);
+    background: rgba(88, 166, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .dev-time {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .dev-files {
+    margin-top: 6px;
+    list-style: none;
+  }
+
+  .dev-files li {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 1px 0;
+  }
+
+  .dev-files li::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    border-left: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    position: relative;
+    top: -2px;
+  }
+
+  /* Panel: Conflict Radar */
+  #conflicts { grid-column: 2; grid-row: 1; }
+
+  .conflict-item {
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+  }
+
+  .conflict-item.high {
+    border-left: 3px solid var(--red);
+  }
+
+  .conflict-item.low {
+    border-left: 3px solid var(--yellow);
+  }
+
+  .conflict-file {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .severity-badge {
+    font-family: var(--font);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .severity-badge.high {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--red);
+  }
+
+  .severity-badge.low {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--yellow);
+  }
+
+  .conflict-branches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .branch-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  .branch-tag .author {
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+
+  .conflict-local {
+    font-size: 11px;
+    color: var(--orange);
+    margin-top: 4px;
+  }
+
+  .no-conflicts {
+    color: var(--green);
+    padding: 24px;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  /* Panel: Branch Timeline */
+  #timeline {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .timeline-container {
+    overflow-x: auto;
+  }
+
+  .timeline-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .timeline-row:last-child { border-bottom: none; }
+
+  .timeline-row.current { background: rgba(88, 166, 255, 0.04); }
+
+  .timeline-label {
+    width: 220px;
+    min-width: 220px;
+    padding-right: 16px;
+  }
+
+  .timeline-branch-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .timeline-row.current .timeline-branch-name { color: var(--blue); }
+
+  .timeline-branch-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .ahead-behind {
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .ahead { color: var(--green); }
+  .behind { color: var(--red); }
+
+  .timeline-track {
+    flex: 1;
+    height: 32px;
+    position: relative;
+    min-width: 400px;
+  }
+
+  .timeline-track-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border);
+    transform: translateY(-50%);
+  }
+
+  .timeline-dot {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--blue);
+    border: 2px solid var(--bg);
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    z-index: 1;
+  }
+
+  .timeline-dot:hover {
+    transform: translate(-50%, -50%) scale(1.5);
+    z-index: 2;
+  }
+
+  .timeline-dot.stale { background: var(--text-dim); }
+  .timeline-dot.recent { background: var(--green); }
+  .timeline-dot.today { background: var(--blue); }
+
+  .timeline-tooltip {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  .timeline-dot:hover .timeline-tooltip { display: block; }
+
+  .timeline-tooltip .tt-hash {
+    font-family: var(--mono);
+    color: var(--blue);
+  }
+
+  .timeline-tooltip .tt-msg {
+    color: var(--text);
+    margin-top: 2px;
+  }
+
+  .timeline-tooltip .tt-time {
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .timeline-axis {
+    display: flex;
+    justify-content: space-between;
+    padding-left: 220px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .no-branches {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 24px;
+  }
+
+  /* Panel: Project Context */
+  #context {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    max-height: 500px;
+  }
+
+  .context-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .context-tab {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .context-tab:hover { border-color: var(--text-dim); }
+  .context-tab.active {
+    background: var(--blue);
+    color: #fff;
+    border-color: var(--blue);
+  }
+
+  .context-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    font-size: 14px;
+    line-height: 1.7;
+    overflow: auto;
+    max-height: 400px;
+  }
+
+  /* Markdown rendering */
+  .context-content h1 { font-size: 20px; margin: 16px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .context-content h2 { font-size: 17px; margin: 14px 0 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  .context-content h3 { font-size: 15px; margin: 12px 0 4px; }
+  .context-content h1:first-child, .context-content h2:first-child { margin-top: 0; }
+  .context-content p { margin: 8px 0; }
+  .context-content ul, .context-content ol { margin: 8px 0; padding-left: 24px; }
+  .context-content li { margin: 2px 0; }
+  .context-content code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .context-content pre {
+    background: var(--bg);
+    padding: 12px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .context-content pre code { background: none; padding: 0; }
+  .context-content a { color: var(--blue); text-decoration: none; }
+  .context-content a:hover { text-decoration: underline; }
+  .context-content table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+  .context-content th, .context-content td {
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    text-align: left;
+    font-size: 13px;
+  }
+  .context-content th { background: var(--bg); font-weight: 600; }
+  .context-content input[type="checkbox"] { margin-right: 6px; }
+
+  .empty-state {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 32px;
+    font-size: 14px;
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .grid {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+    #activity, #conflicts, #timeline, #context {
+      grid-column: 1;
+      grid-row: auto;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>
+    <span class="status-dot" id="statusDot"></span>
+    <span id="repoName">swarmcode</span>
+  </h1>
+  <span class="header-meta" id="lastUpdate">Connecting...</span>
+</header>
+
+<div class="grid">
+  <section class="panel" id="activity">
+    <div class="panel-title">Team Activity <span class="count" id="activityCount">0</span></div>
+    <div id="activityContent"></div>
+  </section>
+
+  <section class="panel" id="conflicts">
+    <div class="panel-title">Conflict Radar <span class="count" id="conflictCount">0</span></div>
+    <div id="conflictContent"></div>
+  </section>
+
+  <section class="panel" id="timeline">
+    <div class="panel-title">Branch Timeline <span class="count" id="branchCount">0</span></div>
+    <div class="timeline-axis" id="timelineAxis"></div>
+    <div class="timeline-container" id="timelineContent"></div>
+  </section>
+
+  <section class="panel" id="context">
+    <div class="panel-title">Project Context <span class="count" id="contextCount">0</span></div>
+    <div class="context-tabs" id="contextTabs"></div>
+    <div class="context-content" id="contextContent"></div>
+  </section>
+</div>
+
+<!-- Simple markdown renderer (no external deps) -->
+<script>
+function renderMarkdown(md) {
+  let html = md
+    // Code blocks
+    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre><code>${escHtml(code.trim())}</code></pre>`)
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Headers
+    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold & italic
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    // Checkboxes
+    .replace(/^- \[x\] (.+)$/gm, '<li><input type="checkbox" checked disabled> $1</li>')
+    .replace(/^- \[ \] (.+)$/gm, '<li><input type="checkbox" disabled> $1</li>')
+    // Unordered lists
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    // Table rows
+    .replace(/^\|(.+)\|$/gm, (_, row) => {
+      const cells = row.split('|').map(c => c.trim());
+      return '<tr>' + cells.map(c =>
+        /^[-:]+$/.test(c) ? '' : `<td>${c}</td>`
+      ).join('') + '</tr>';
+    })
+    // Paragraphs (double newline)
+    .replace(/\n\n+/g, '</p><p>')
+    // Line breaks
+    .replace(/\n/g, '<br>');
+
+  // Wrap lists
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  // Clean up nested ul
+  html = html.replace(/<\/ul>\s*<ul>/g, '');
+  // Wrap tables
+  html = html.replace(/(<tr>[\s\S]*?<\/tr>)/g, '<table>$1</table>');
+  html = html.replace(/<\/table>\s*<table>/g, '');
+  // Remove empty separator rows
+  html = html.replace(/<tr><\/tr>/g, '');
+
+  return `<p>${html}</p>`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function timeAgo(ts) {
+  const secs = Math.floor(Date.now() / 1000 - ts);
+  if (secs < 60) return 'just now';
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
+
+function formatDate(ts) {
+  return new Date(ts * 1000).toLocaleString();
+}
+
+// --- Render functions ---
+
+function renderActivity(data) {
+  const el = document.getElementById('activityContent');
+  document.getElementById('activityCount').textContent = data.length;
+
+  if (data.length === 0) {
+    el.innerHTML = '<div class="empty-state">No team activity in the last 24 hours</div>';
+    return;
+  }
+
+  el.innerHTML = data.map(dev => {
+    const branches = dev.active_branches.map(b => b.replace(/^origin\//, '')).join(', ');
+    const files = dev.recent_files.slice(0, 8);
+
+    return `
+      <div class="dev-card">
+        <div class="dev-header">
+          <div>
+            <span class="dev-name">${escHtml(dev.name)}</span>
+            <span class="dev-time">${timeAgo(dev.last_active)}</span>
+          </div>
+          ${branches ? `<span class="dev-branch">${escHtml(branches)}</span>` : ''}
+        </div>
+        <ul class="dev-files">
+          ${files.map(f => `<li>${escHtml(f)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderConflicts(data) {
+  const el = document.getElementById('conflictContent');
+  document.getElementById('conflictCount').textContent = data.conflicts.length;
+
+  if (data.conflicts.length === 0) {
+    el.innerHTML = '<div class="no-conflicts">No conflicts detected</div>';
+    return;
+  }
+
+  el.innerHTML = data.conflicts.map(c => `
+    <div class="conflict-item ${c.severity}">
+      <div class="conflict-file">
+        ${escHtml(c.file)}
+        <span class="severity-badge ${c.severity}">${c.severity}</span>
+      </div>
+      <div class="conflict-branches">
+        ${c.branches.map(b => `
+          <span class="branch-tag">
+            ${escHtml(b.branch.replace(/^origin\//, ''))}
+            <span class="author">${escHtml(b.author)}</span>
+          </span>
+        `).join('')}
+      </div>
+      ${c.local ? '<div class="conflict-local">Also modified locally</div>' : ''}
+    </div>
+  `).join('');
+}
+
+function renderTimeline(branches) {
+  const el = document.getElementById('timelineContent');
+  const axisEl = document.getElementById('timelineAxis');
+  document.getElementById('branchCount').textContent = branches.length;
+
+  if (branches.length === 0) {
+    el.innerHTML = '<div class="no-branches">No active branches</div>';
+    axisEl.innerHTML = '';
+    return;
+  }
+
+  // Time range: last 14 days
+  const now = Date.now() / 1000;
+  const rangeStart = now - 14 * 86400;
+  const rangeEnd = now;
+
+  // Axis labels
+  const labels = [];
+  for (let i = 14; i >= 0; i -= 2) {
+    const d = new Date((now - i * 86400) * 1000);
+    labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  }
+  axisEl.innerHTML = labels.map(l => `<span>${l}</span>`).join('');
+
+  el.innerHTML = branches.map(branch => {
+    const dots = branch.commits.map(c => {
+      const pct = ((c.timestamp - rangeStart) / (rangeEnd - rangeStart)) * 100;
+      if (pct < 0 || pct > 100) return '';
+
+      const age = now - c.timestamp;
+      let dotClass = 'stale';
+      if (age < 3600) dotClass = 'recent';
+      else if (age < 86400) dotClass = 'today';
+
+      return `
+        <div class="timeline-dot ${dotClass}" style="left: ${pct}%">
+          <div class="timeline-tooltip">
+            <div class="tt-hash">${c.hash}</div>
+            <div class="tt-msg">${escHtml(c.message)}</div>
+            <div class="tt-time">${formatDate(c.timestamp)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const aheadBehind = [];
+    if (branch.ahead > 0) aheadBehind.push(`<span class="ahead">+${branch.ahead}</span>`);
+    if (branch.behind > 0) aheadBehind.push(`<span class="behind">-${branch.behind}</span>`);
+
+    return `
+      <div class="timeline-row ${branch.is_current ? 'current' : ''}">
+        <div class="timeline-label">
+          <div class="timeline-branch-name" title="${escHtml(branch.name)}">${escHtml(branch.name)}</div>
+          <div class="timeline-branch-meta">
+            <span>${escHtml(branch.author)}</span>
+            ${aheadBehind.length ? `<span class="ahead-behind">${aheadBehind.join(' ')}</span>` : ''}
+          </div>
+        </div>
+        <div class="timeline-track">
+          <div class="timeline-track-line"></div>
+          ${dots}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+let activeContextFile = 0;
+
+function renderContext(data) {
+  const tabsEl = document.getElementById('contextTabs');
+  const contentEl = document.getElementById('contextContent');
+  document.getElementById('contextCount').textContent = data.files.length;
+
+  if (data.files.length === 0) {
+    tabsEl.innerHTML = '';
+    contentEl.innerHTML = '<div class="empty-state">No project docs found (README.md, PLAN.md, specs/, docs/)</div>';
+    return;
+  }
+
+  if (activeContextFile >= data.files.length) activeContextFile = 0;
+
+  tabsEl.innerHTML = data.files.map((f, i) => `
+    <button class="context-tab ${i === activeContextFile ? 'active' : ''}"
+            onclick="switchContextTab(${i})">${escHtml(f.path)}</button>
+  `).join('');
+
+  contentEl.innerHTML = renderMarkdown(data.files[activeContextFile].content);
+}
+
+function switchContextTab(i) {
+  activeContextFile = i;
+  if (window._lastData) renderContext(window._lastData.context);
+}
+
+// --- Data loading ---
+
+function render(data) {
+  window._lastData = data;
+  document.getElementById('repoName').textContent = data.repo;
+  document.getElementById('lastUpdate').textContent =
+    'Updated ' + new Date(data.timestamp).toLocaleTimeString();
+
+  renderActivity(data.activity);
+  renderConflicts(data.conflicts);
+  renderTimeline(data.branches);
+  renderContext(data.context);
+}
+
+function connect() {
+  const dot = document.getElementById('statusDot');
+  const es = new EventSource('/events');
+
+  es.onmessage = (event) => {
+    dot.classList.remove('disconnected');
+    try {
+      render(JSON.parse(event.data));
+    } catch (e) {
+      console.error('Failed to parse SSE data:', e);
+    }
+  };
+
+  es.onerror = () => {
+    dot.classList.add('disconnected');
+    document.getElementById('lastUpdate').textContent = 'Reconnecting...';
+  };
+}
+
+connect();
+</script>
+
+</body>
+</html>

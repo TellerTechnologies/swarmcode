@@ -138,6 +138,23 @@ Auto-push closes this gap. When enabled, swarmcode watches for new local commits
 - Never pulls or rebases
 - Never touches other branches
 
+## Dashboard
+
+Swarmcode includes a live web dashboard so your team can see who's working on what at a glance.
+
+```bash
+swarmcode dashboard
+```
+
+Opens at `http://localhost:3000` (use `--port` to change). The dashboard has four panels:
+
+- **Team Activity** — each developer as a card showing their branch, recent files, and time since last commit
+- **Conflict Radar** — files being modified on multiple branches, with severity badges and branch tags showing who's involved
+- **Branch Timeline** — 14-day horizontal timeline per branch with commit dots, ahead/behind counts vs main, and hover details
+- **Project Context** — tabbed view of your PLAN.md, specs, README, and other docs with rendered markdown
+
+Data refreshes automatically every 30 seconds via Server-Sent Events. The dashboard auto-fetches from the remote so it always shows the latest state across the team.
+
 ## CLI
 
 ```bash
@@ -155,6 +172,10 @@ swarmcode hook
 # Check team activity from the terminal
 swarmcode status
 swarmcode status --since 7d
+
+# Launch live web dashboard
+swarmcode dashboard
+swarmcode dashboard --port 8080
 ```
 
 ## What Your AI Sees
@@ -233,7 +254,7 @@ All matching is regex-based (no AST parsing). It covers common declaration patte
 
 ## Limitations
 
-- **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. Auto-push closes this gap when enabled.
+- **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. Auto-push and auto-fetch close this gap — commits are pushed within seconds and fetched by teammates within 30 seconds.
 - **Remote branches required.** Conflict detection, path checking, and branch-aware export search all analyze remote branches — local-only branches from teammates aren't visible.
 
 ## Documentation

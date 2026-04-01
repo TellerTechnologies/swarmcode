@@ -57,10 +57,15 @@ src/
 │   ├── auto-push.ts           setInterval + git push → auto-push new commits
 │   └── get-project-context.ts  reads docs/, specs/, READMEs → project context
 │
+├── dashboard/
+│   ├── server.ts       HTTP server for live web dashboard. Serves HTML, JSON API, and SSE.
+│   └── index.html      Single-page dashboard frontend. Dark theme, 4 panels, no build step.
+│
 ├── types.ts            All type definitions (GitCommit, AuthorActivity, etc.)
 ├── index.ts            Public exports (VERSION + types)
 └── cli.ts              Commander CLI. Default action starts MCP server.
-                        `swarmcode status` for terminal use, `swarmcode hook` to install pre-push hook.
+                        `swarmcode status` for terminal use, `swarmcode hook` to install pre-push hook,
+                        `swarmcode dashboard` to launch the web dashboard.
 ```
 
 ## The tools
@@ -78,6 +83,25 @@ src/
 | `disable_auto_push` | End of session (optional) | Clears interval |
 
 All tools are read-only. The AI's work is shared when it commits normally.
+
+## Auto-fetch
+
+Tools that read remote state (`get_team_activity`, `check_path`, `check_conflicts`, `search_team_code`) automatically run `git fetch --all --prune` before querying. This is throttled to at most once per 30 seconds so repeated tool calls don't hammer the remote. If the fetch fails (no network, no remote), the tool continues with stale data.
+
+The auto-fetch mechanism lives in `git.ts` as `ensureFresh()`. It tracks a `lastFetchTimestamp` module-level variable and only fetches when the timestamp is older than the staleness threshold (default 30s). The fetch has a 15-second timeout to prevent slow remotes from blocking tool calls.
+
+## Dashboard
+
+`swarmcode dashboard` launches a web dashboard at `http://localhost:3000`. It reuses the same data sources as the MCP tools:
+
+| Panel | Data source |
+|-------|------------|
+| Team Activity | `getTeamActivity()` — same as `get_team_activity` MCP tool |
+| Conflict Radar | `checkConflicts()` — same as `check_conflicts` MCP tool |
+| Branch Timeline | `getBranchLog()` + `getBranchAheadBehind()` from `git.ts` |
+| Project Context | `getProjectContext()` — same as `get_project_context` MCP tool |
+
+The server uses Node's built-in `http` module (no Express). Live updates are pushed via Server-Sent Events every 30 seconds, riding the same `ensureFresh()` throttle. The frontend is a single HTML file with inlined CSS and JS — no build step, no external dependencies.
 
 ## Server instructions
 
@@ -112,12 +136,12 @@ Splitting on blank lines doesn't work because there are blank lines both within 
 
 ## What's NOT here
 
-- **Minimal background activity** — only auto-push runs a polling interval; all read tools are purely reactive
+- **Minimal background activity** — auto-push polls for new commits; auto-fetch is throttled on-demand (not a background process)
 - **No manifest files** — no `.swarmcode/` directory
 - **No config files** — `swarmcode init` appends to your AI context file but creates no swarmcode-specific config
 - **No LLM integration** — git metadata, source analysis, and doc scanning are sufficient
-- **No caching** — every tool call queries git/filesystem fresh (~50-200ms, fast enough)
-- **One write operation** — auto-push runs `git push`; all other tools are read-only
+- **No caching** — every tool call queries git/filesystem fresh (~50-200ms, fast enough). Auto-fetch is throttled but that's rate-limiting, not caching.
+- **Two write operations** — auto-push runs `git push`; auto-fetch runs `git fetch`. All other tools are read-only.
 
 ## Limitations
 

@@ -79,3 +79,23 @@ Decisions made during the v2 rewrite and the reasoning behind them. Read this be
 **This was a bug found during integration testing.** The unit tests (with mocked git output) didn't catch it because the mock data didn't reproduce git's actual output format. The integration tests (real git repo) caught it immediately.
 
 **Lesson:** Integration tests against real git repos catch parsing issues that unit tests with synthetic data miss.
+
+## Auto-fetch over auto-pull
+
+**Decision:** Tools that read remote state automatically run `git fetch` (not `git pull`) before querying, throttled to once per 30 seconds.
+
+**Why:** `git pull` = fetch + merge, which modifies the working tree. That's dangerous when a developer or AI is actively editing files — it can cause merge conflicts mid-session or break the current build state. `git fetch` only updates remote refs so swarmcode can *see* what's on other branches without touching local files.
+
+**Why throttled on-demand, not a background interval:** Fits the stateless design philosophy. No background process to manage. The throttle prevents repeated tool calls from hammering the remote. If the AI calls `check_all` (which triggers `get_team_activity`, `check_conflicts`, and `get_project_context`), only the first sub-tool actually fetches.
+
+**When to revisit:** If the 30-second staleness window is too long for real-time coordination. Could be made configurable per-project.
+
+## Dashboard as built-in HTML, not React/SPA
+
+**Decision:** The web dashboard is a single HTML file with inlined CSS and JS, served by Node's built-in `http` module. No React, no bundler, no external npm dependencies.
+
+**Why:** The dashboard needs to "just work" with `swarmcode dashboard`. Adding React or a build step would mean either a build command before serving, or bundling pre-built assets. Both add complexity. The dashboard is read-only and relatively simple — four panels displaying JSON data. Inline HTML/CSS/JS is sufficient and keeps the install footprint minimal.
+
+**Trade-off:** The inline markdown renderer is basic (no syntax highlighting, limited table support). Acceptable for rendering PLAN.md and specs.
+
+**When to revisit:** If the dashboard grows significantly in complexity (interactive editing, filters, multi-repo views), consider a lightweight framework. Until then, vanilla JS is fine.

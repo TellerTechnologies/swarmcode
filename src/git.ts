@@ -225,6 +225,77 @@ export interface PushResult {
   error?: string;
 }
 
+export function getMainBranch(): string {
+  const remote = run(['branch', '-r']);
+  if (remote.includes('origin/main')) return 'origin/main';
+  if (remote.includes('origin/master')) return 'origin/master';
+  const local = run(['branch']);
+  if (local.includes('main')) return 'main';
+  if (local.includes('master')) return 'master';
+  return 'HEAD';
+}
+
+export function getBranchAheadBehind(
+  branch: string,
+  base: string,
+): { ahead: number; behind: number } {
+  const result = runOrNull(['rev-list', '--count', '--left-right', `${base}...${branch}`]);
+  if (!result) return { ahead: 0, behind: 0 };
+  const parts = result.split('\t');
+  if (parts.length < 2) return { ahead: 0, behind: 0 };
+  return { ahead: parseInt(parts[1], 10) || 0, behind: parseInt(parts[0], 10) || 0 };
+}
+
+export function getBranchLog(branch: string, since: string): GitCommit[] {
+  const main = getMainBranch();
+
+  // Try range (branch-specific commits), fall back to plain log if no merge-base
+  let output = run([
+    'log',
+    `--format=${COMMIT_SEP}%H|%an|%ae|%at|%s`,
+    '--name-only',
+    '--no-merges',
+    `--since=${since}`,
+    `${main}..${branch}`,
+  ]);
+
+  if (!output) {
+    // Fallback: just show recent commits on this branch
+    output = run([
+      'log',
+      `--format=${COMMIT_SEP}%H|%an|%ae|%at|%s`,
+      '--name-only',
+      '--no-merges',
+      `--since=${since}`,
+      '-20',
+      branch,
+    ]);
+  }
+
+  if (!output) return [];
+
+  const blocks = output.split(COMMIT_SEP);
+  const commits: GitCommit[] = [];
+
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    const lines = block.split('\n').filter((l) => l.length > 0);
+    if (lines.length === 0) continue;
+
+    const header = lines[0];
+    const parts = header.split('|');
+    if (parts.length < 5) continue;
+
+    const [hash, author, email, timestampStr, ...messageParts] = parts;
+    const message = messageParts.join('|');
+    const timestamp = parseInt(timestampStr, 10);
+    const files = lines.slice(1).filter((l) => l.length > 0);
+    commits.push({ hash, author, email, timestamp, message, files });
+  }
+
+  return commits;
+}
+
 export function push(branch: string, setUpstream: boolean): PushResult {
   try {
     const args = setUpstream

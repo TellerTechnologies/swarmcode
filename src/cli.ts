@@ -213,5 +213,14 @@ git fetch origin 2>/dev/null
       console.log(`Installed swarmcode pre-push hook at ${hookPath}`);
     });
 
+  program
+    .command('dashboard')
+    .description('Launch a live web dashboard showing team activity, conflicts, and branches')
+    .option('-p, --port <port>', 'Port to listen on', '3000')
+    .action(async (options) => {
+      const { startDashboard } = await import('./dashboard/server.js');
+      startDashboard(parseInt(options.port, 10));
+    });
+
   return program;
 }
