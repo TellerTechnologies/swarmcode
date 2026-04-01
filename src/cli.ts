@@ -110,6 +110,11 @@ Swarmcode scans these locations for project context:
       }
 
       // Set up MCP configuration
+      const isWindows = process.platform === 'win32';
+      const mcpServer = isWindows
+        ? { command: 'cmd', args: ['/c', 'npx', 'swarmcode'] }
+        : { command: 'npx', args: ['swarmcode'] };
+
       const MCP_CONFIG: Record<string, { file: string; shape: (existing: Record<string, unknown>) => Record<string, unknown> }> = {
         'claude-code': {
           file: '.mcp.json',
@@ -117,7 +122,7 @@ Swarmcode scans these locations for project context:
             ...existing,
             mcpServers: {
               ...(existing.mcpServers as Record<string, unknown> || {}),
-              swarmcode: { command: 'npx', args: ['swarmcode'] },
+              swarmcode: mcpServer,
             },
           }),
         },
@@ -127,7 +132,7 @@ Swarmcode scans these locations for project context:
             ...existing,
             mcpServers: {
               ...(existing.mcpServers as Record<string, unknown> || {}),
-              swarmcode: { command: 'npx', args: ['swarmcode'] },
+              swarmcode: mcpServer,
             },
           }),
         },
