@@ -100,14 +100,63 @@ Swarmcode scans these locations for project context:
         const existing = readFileSync(filePath, 'utf-8');
         if (existing.includes('## Team Coordination (Swarmcode)')) {
           console.log(`Swarmcode section already exists in ${filePath}`);
-          return;
+        } else {
+          writeFileSync(filePath, existing.trimEnd() + '\n\n' + SWARMCODE_SNIPPET);
+          console.log(`Added swarmcode team coordination to ${filePath}`);
         }
-        writeFileSync(filePath, existing.trimEnd() + '\n\n' + SWARMCODE_SNIPPET);
       } else {
         writeFileSync(filePath, SWARMCODE_SNIPPET);
+        console.log(`Added swarmcode team coordination to ${filePath}`);
       }
 
-      console.log(`Added swarmcode team coordination to ${filePath}`);
+      // Set up MCP configuration
+      const MCP_CONFIG: Record<string, { file: string; shape: (existing: Record<string, unknown>) => Record<string, unknown> }> = {
+        'claude-code': {
+          file: '.mcp.json',
+          shape: (existing) => ({
+            ...existing,
+            mcpServers: {
+              ...(existing.mcpServers as Record<string, unknown> || {}),
+              swarmcode: { command: 'npx', args: ['swarmcode'] },
+            },
+          }),
+        },
+        'cursor': {
+          file: '.cursor/mcp.json',
+          shape: (existing) => ({
+            ...existing,
+            mcpServers: {
+              ...(existing.mcpServers as Record<string, unknown> || {}),
+              swarmcode: { command: 'npx', args: ['swarmcode'] },
+            },
+          }),
+        },
+      };
+
+      const mcpEntry = MCP_CONFIG[tool];
+      if (mcpEntry) {
+        const mcpDir = dirname(mcpEntry.file);
+        if (mcpDir !== '.' && !existsSync(mcpDir)) {
+          mkdirSync(mcpDir, { recursive: true });
+        }
+
+        let existing: Record<string, unknown> = {};
+        if (existsSync(mcpEntry.file)) {
+          try {
+            existing = JSON.parse(readFileSync(mcpEntry.file, 'utf-8'));
+          } catch {
+            // If the file is malformed, start fresh
+          }
+          const servers = existing.mcpServers as Record<string, unknown> | undefined;
+          if (servers && 'swarmcode' in servers) {
+            console.log(`Swarmcode MCP server already configured in ${mcpEntry.file}`);
+            return;
+          }
+        }
+
+        writeFileSync(mcpEntry.file, JSON.stringify(mcpEntry.shape(existing), null, 2) + '\n');
+        console.log(`Configured swarmcode MCP server in ${mcpEntry.file}`);
+      }
     });
 
   const PRE_PUSH_HOOK = `#!/bin/sh

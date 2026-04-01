@@ -40,6 +40,39 @@ describe('swarmcode init', () => {
     expect(content).toContain('specs/');
   });
 
+  it('creates .mcp.json with swarmcode server for claude-code', () => {
+    const output = runInit();
+
+    expect(output).toContain('Configured swarmcode MCP server in .mcp.json');
+    const mcpConfig = JSON.parse(readFileSync(join(testDir, '.mcp.json'), 'utf-8'));
+    expect(mcpConfig.mcpServers.swarmcode).toEqual({
+      command: 'npx',
+      args: ['swarmcode'],
+    });
+  });
+
+  it('merges into existing .mcp.json without overwriting other servers', () => {
+    writeFileSync(join(testDir, '.mcp.json'), JSON.stringify({
+      mcpServers: { other: { command: 'other-server' } },
+    }));
+
+    runInit();
+
+    const mcpConfig = JSON.parse(readFileSync(join(testDir, '.mcp.json'), 'utf-8'));
+    expect(mcpConfig.mcpServers.other).toEqual({ command: 'other-server' });
+    expect(mcpConfig.mcpServers.swarmcode).toEqual({ command: 'npx', args: ['swarmcode'] });
+  });
+
+  it('skips .mcp.json when swarmcode server already configured', () => {
+    writeFileSync(join(testDir, '.mcp.json'), JSON.stringify({
+      mcpServers: { swarmcode: { command: 'npx', args: ['swarmcode'] } },
+    }));
+
+    const output = runInit();
+
+    expect(output).toContain('already configured');
+  });
+
   it('appends to existing CLAUDE.md', () => {
     writeFileSync(join(testDir, 'CLAUDE.md'), '# My Project\n\nExisting content.\n');
 
@@ -65,6 +98,17 @@ describe('swarmcode init', () => {
     expect(existsSync(join(testDir, '.cursorrules'))).toBe(true);
     const content = readFileSync(join(testDir, '.cursorrules'), 'utf-8');
     expect(content).toContain('## Team Coordination (Swarmcode)');
+  });
+
+  it('creates .cursor/mcp.json with swarmcode server for cursor', () => {
+    const output = runInit(['--tool', 'cursor']);
+
+    expect(output).toContain('Configured swarmcode MCP server in .cursor/mcp.json');
+    const mcpConfig = JSON.parse(readFileSync(join(testDir, '.cursor', 'mcp.json'), 'utf-8'));
+    expect(mcpConfig.mcpServers.swarmcode).toEqual({
+      command: 'npx',
+      args: ['swarmcode'],
+    });
   });
 
   it('writes to .github/copilot-instructions.md when --tool copilot', () => {
