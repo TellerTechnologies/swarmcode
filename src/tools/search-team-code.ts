@@ -5,6 +5,8 @@ import * as git from '../git.js';
 import { searchExports, detectLanguage } from '../source-parser.js';
 
 export function searchTeamCode(params: { query: string; path?: string }): ExportMatch[] {
+  git.ensureFresh();
+
   // 1. Get repo root — return empty array if null
   const repoRoot = git.getRepoRoot();
   if (!repoRoot) return [];

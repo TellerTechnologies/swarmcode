@@ -21,6 +21,7 @@ function inferWorkAreas(files: string[]): string[] {
 }
 
 export function getTeamActivity(params: { since: string }): AuthorActivity[] {
+  git.ensureFresh();
   const currentUser = git.getCurrentUser();
   const commits = git.getLog({ all: true, since: params.since });
   const activeBranches = git.getActiveRemoteBranches();

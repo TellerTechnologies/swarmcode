@@ -23,6 +23,10 @@ export function createServer(): McpServer {
         '- When something conflicts or breaks unexpectedly → call check_conflicts',
         '- At the start of a session → call enable_auto_push so teammates see your work immediately',
         'Do not rebuild what a teammate has already built. Import from their work instead.',
+        '',
+        'Commit early and often — after each logical unit of work (new function, bug fix, test added, file created).',
+        'Small, frequent commits are pushed automatically and let teammates see your progress in real-time.',
+        'Waiting until the end to commit one large changeset defeats coordination — teammates cannot see or avoid your work.',
       ].join('\n'),
     },
   );

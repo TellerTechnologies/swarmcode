@@ -2,6 +2,7 @@ import type { ConflictReport, ConflictEntry } from '../types.js';
 import * as git from '../git.js';
 
 export function checkConflicts(): ConflictReport {
+  git.ensureFresh();
   const currentBranch = git.getCurrentBranch();
 
   // Build set of locally modified files

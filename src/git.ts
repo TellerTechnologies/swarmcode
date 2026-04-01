@@ -3,6 +3,35 @@ import type { GitCommit } from './types.js';
 
 const EXEC_OPTS = { encoding: 'utf-8' as const, maxBuffer: 10 * 1024 * 1024 };
 
+// ---------------------------------------------------------------------------
+// Auto-fetch: throttled fetch-on-demand
+// ---------------------------------------------------------------------------
+
+const DEFAULT_FETCH_STALENESS_SECS = 30;
+let lastFetchTimestamp = 0;
+
+/**
+ * Ensures remote refs are fresh by running `git fetch --all --prune` if the
+ * last fetch was more than `stalenessSeconds` ago. Safe to call frequently —
+ * the throttle prevents hammering the remote.
+ */
+export function ensureFresh(stalenessSeconds: number = DEFAULT_FETCH_STALENESS_SECS): boolean {
+  const now = Date.now() / 1000;
+  if (now - lastFetchTimestamp < stalenessSeconds) return false;
+
+  try {
+    execFileSync('git', ['fetch', '--all', '--prune'], {
+      ...EXEC_OPTS,
+      timeout: 15_000, // 15s timeout so a slow remote doesn't hang the tool
+    });
+    lastFetchTimestamp = now;
+    return true;
+  } catch {
+    // Fetch failed (no network, no remote, etc.) — continue with stale data
+    return false;
+  }
+}
+
 // Internal helpers
 
 function run(args: string[]): string {

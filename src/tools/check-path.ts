@@ -2,6 +2,7 @@ import type { PathCheckResult, PathAuthor, PendingChange, RiskLevel } from '../t
 import * as git from '../git.js';
 
 export function checkPath(params: { path: string }): PathCheckResult {
+  git.ensureFresh();
   const currentBranch = git.getCurrentBranch();
 
   // Get recent commits for this path
