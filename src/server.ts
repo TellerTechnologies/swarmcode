@@ -13,9 +13,19 @@ import { checkAll } from './tools/check-all.js';
 import {
   isConfigured as linearConfigured,
   getLinearData,
+  searchIssues,
+  getIssue,
+  getTeams as getLinearTeams,
+  getUsers as getLinearUsers,
+  getWorkflowStates,
+  getCycles,
+  getViewer,
   startIssue,
   completeIssue,
   updateIssueStatus,
+  updateIssue,
+  createIssue,
+  createSubIssue,
   commentOnIssue,
 } from './linear.js';
 
@@ -192,11 +202,14 @@ export function createServer(): McpServer {
   // ---------------------------------------------------------------------------
 
   if (linearConfigured()) {
+
+    // --- Read tools ---
+
     server.registerTool(
       'linear_get_issues',
       {
-        title: 'Linear: Get Issues',
-        description: 'Fetch active issues from Linear (In Progress + Todo). Shows identifier, title, assignee, status, and priority. Use at session start to see what work is available.',
+        title: 'Linear: Get Active Issues',
+        description: 'Fetch active issues from Linear (In Progress + Todo). Shows identifier, title, assignee, status, priority, and branch name. Use at session start to see what work is available.',
         inputSchema: {},
       },
       async () => {
@@ -208,6 +221,136 @@ export function createServer(): McpServer {
         }
       },
     );
+
+    server.registerTool(
+      'linear_search_issues',
+      {
+        title: 'Linear: Search Issues',
+        description: 'Search Linear issues by text query. Finds issues matching title, description, identifier, or comments. Use to check if a ticket already exists before creating one.',
+        inputSchema: {
+          query: z.string().describe('Search text (e.g. "auth login bug", "ENG-42")'),
+          limit: z.number().optional().describe('Max results to return (default: 20)'),
+        },
+      },
+      async ({ query, limit }) => {
+        try {
+          const results = await searchIssues(query, limit ?? 20);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_issue',
+      {
+        title: 'Linear: Get Issue Details',
+        description: 'Get full details on a specific issue: description, comments, sub-issues, labels, dates, team. Use before starting work to understand requirements.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+        },
+      },
+      async ({ issue }) => {
+        try {
+          const result = await getIssue(issue);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_teams',
+      {
+        title: 'Linear: Get Teams',
+        description: 'List all teams in the workspace. Returns team IDs, names, and keys. Use to resolve team IDs when creating issues.',
+        inputSchema: {},
+      },
+      async () => {
+        try {
+          const teams = await getLinearTeams();
+          return { content: [{ type: 'text' as const, text: JSON.stringify(teams, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_users',
+      {
+        title: 'Linear: Get Users',
+        description: 'List all users in the workspace. Returns user IDs, names, and emails. Use to resolve assignee IDs.',
+        inputSchema: {},
+      },
+      async () => {
+        try {
+          const users = await getLinearUsers();
+          return { content: [{ type: 'text' as const, text: JSON.stringify(users, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_workflow_states',
+      {
+        title: 'Linear: Get Workflow States',
+        description: 'Get all workflow states for a team (e.g. Backlog, Todo, In Progress, Done, Cancelled). Use to see available statuses and resolve state IDs.',
+        inputSchema: {
+          teamId: z.string().describe('Team ID (get from linear_get_teams)'),
+        },
+      },
+      async ({ teamId }) => {
+        try {
+          const states = await getWorkflowStates(teamId);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(states, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_cycles',
+      {
+        title: 'Linear: Get Cycles',
+        description: 'Get the active cycle (sprint) and recent cycles for a team. Shows cycle name, dates, and issue counts.',
+        inputSchema: {
+          teamId: z.string().describe('Team ID (get from linear_get_teams)'),
+        },
+      },
+      async ({ teamId }) => {
+        try {
+          const cycles = await getCycles(teamId);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(cycles, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_viewer',
+      {
+        title: 'Linear: Get Current User',
+        description: 'Get the authenticated user (you). Returns your user ID, name, and email.',
+        inputSchema: {},
+      },
+      async () => {
+        try {
+          const viewer = await getViewer();
+          return { content: [{ type: 'text' as const, text: JSON.stringify(viewer, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    // --- Write tools ---
 
     server.registerTool(
       'linear_start_issue',
@@ -251,7 +394,7 @@ export function createServer(): McpServer {
       'linear_update_status',
       {
         title: 'Linear: Update Status',
-        description: 'Move a Linear issue to a specific status. Use when the standard start/complete flow does not apply (e.g. marking as cancelled or moving back to todo).',
+        description: 'Move a Linear issue to a specific status type. Use when the standard start/complete flow does not apply.',
         inputSchema: {
           issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
           status: z.string().describe('Target status type: "unstarted", "started", "completed", or "cancelled"'),
@@ -260,6 +403,103 @@ export function createServer(): McpServer {
       async ({ issue, status }) => {
         try {
           const result = await updateIssueStatus(issue, status);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_update_issue',
+      {
+        title: 'Linear: Update Issue',
+        description: 'Update fields on a Linear issue: title, description, priority, assignee, due date, estimate. Use for any modifications beyond status changes.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          title: z.string().optional().describe('New title'),
+          description: z.string().optional().describe('New description (markdown)'),
+          priority: z.number().optional().describe('Priority: 0=none, 1=urgent, 2=high, 3=normal, 4=low'),
+          assigneeId: z.string().optional().describe('User ID to assign to (get from linear_get_users)'),
+          stateId: z.string().optional().describe('Workflow state ID (get from linear_get_workflow_states)'),
+          dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
+          estimate: z.number().optional().describe('Estimate points'),
+        },
+      },
+      async ({ issue, title, description, priority, assigneeId, stateId, dueDate, estimate }) => {
+        const fields: Record<string, unknown> = {};
+        if (title !== undefined) fields.title = title;
+        if (description !== undefined) fields.description = description;
+        if (priority !== undefined) fields.priority = priority;
+        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
+        if (stateId !== undefined) fields.stateId = stateId;
+        if (dueDate !== undefined) fields.dueDate = dueDate;
+        if (estimate !== undefined) fields.estimate = estimate;
+
+        try {
+          const result = await updateIssue(issue, fields);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_create_issue',
+      {
+        title: 'Linear: Create Issue',
+        description: 'Create a new Linear issue. Use when you discover a bug, needed refactor, or follow-up work while coding. Requires a team ID (get from linear_get_teams).',
+        inputSchema: {
+          title: z.string().describe('Issue title'),
+          teamId: z.string().describe('Team ID (get from linear_get_teams)'),
+          description: z.string().optional().describe('Issue description (markdown)'),
+          priority: z.number().optional().describe('Priority: 0=none, 1=urgent, 2=high, 3=normal, 4=low'),
+          assigneeId: z.string().optional().describe('User ID to assign (get from linear_get_users)'),
+          stateId: z.string().optional().describe('Initial state ID (get from linear_get_workflow_states)'),
+          dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
+          estimate: z.number().optional().describe('Estimate points'),
+        },
+      },
+      async ({ title, teamId, description, priority, assigneeId, stateId, dueDate, estimate }) => {
+        const fields: Record<string, unknown> = { title, teamId };
+        if (description !== undefined) fields.description = description;
+        if (priority !== undefined) fields.priority = priority;
+        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
+        if (stateId !== undefined) fields.stateId = stateId;
+        if (dueDate !== undefined) fields.dueDate = dueDate;
+        if (estimate !== undefined) fields.estimate = estimate;
+
+        try {
+          const result = await createIssue(fields as any);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_create_sub_issue',
+      {
+        title: 'Linear: Create Sub-Issue',
+        description: 'Create a sub-issue under a parent issue. Use to break a large ticket into smaller pieces. Inherits the parent team automatically.',
+        inputSchema: {
+          parent: z.string().describe('Parent issue identifier (e.g. "ENG-42")'),
+          title: z.string().describe('Sub-issue title'),
+          description: z.string().optional().describe('Sub-issue description (markdown)'),
+          priority: z.number().optional().describe('Priority: 0=none, 1=urgent, 2=high, 3=normal, 4=low'),
+          assigneeId: z.string().optional().describe('User ID to assign (get from linear_get_users)'),
+        },
+      },
+      async ({ parent, title, description, priority, assigneeId }) => {
+        const fields: Record<string, unknown> = { title };
+        if (description !== undefined) fields.description = description;
+        if (priority !== undefined) fields.priority = priority;
+        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
+
+        try {
+          const result = await createSubIssue(parent, fields as any);
           return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (err: any) {
           return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
