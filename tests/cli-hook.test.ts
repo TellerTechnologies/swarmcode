@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, chmodSync, statSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -36,49 +36,59 @@ function runHook(args: string[] = []): string {
   });
 }
 
+const ALL_HOOKS = ['prepare-commit-msg', 'commit-msg', 'post-commit', 'pre-push'];
+
 describe('swarmcode hook', () => {
-  it('creates pre-push hook when none exists', () => {
+  it('creates all 4 hooks when none exist', () => {
     const output = runHook();
 
     expect(output).toContain('Installed');
-    const hookPath = join(testDir, '.git', 'hooks', 'pre-push');
-    expect(existsSync(hookPath)).toBe(true);
+    for (const hook of ALL_HOOKS) {
+      const hookPath = join(testDir, '.git', 'hooks', hook);
+      expect(existsSync(hookPath)).toBe(true);
 
-    const content = readFileSync(hookPath, 'utf-8');
-    expect(content).toContain('#!/bin/sh');
-    expect(content).toContain('swarmcode');
-    expect(content).toContain('git fetch origin');
+      const content = readFileSync(hookPath, 'utf-8');
+      expect(content).toContain('#!/bin/sh');
+      expect(content).toContain('swarmcode');
+    }
+
+    // pre-push should still have git fetch
+    const prePush = readFileSync(join(testDir, '.git', 'hooks', 'pre-push'), 'utf-8');
+    expect(prePush).toContain('git fetch origin');
   });
 
-  it('makes the hook executable', () => {
+  it('makes all hooks executable', () => {
     runHook();
 
-    const hookPath = join(testDir, '.git', 'hooks', 'pre-push');
-    const stat = statSync(hookPath);
-    // Check that the owner-execute bit is set
-    const ownerExecute = (stat.mode & 0o100) !== 0;
-    expect(ownerExecute).toBe(true);
+    for (const hook of ALL_HOOKS) {
+      const hookPath = join(testDir, '.git', 'hooks', hook);
+      const stat = statSync(hookPath);
+      const ownerExecute = (stat.mode & 0o100) !== 0;
+      expect(ownerExecute).toBe(true);
+    }
   });
 
-  it('skips when hook already contains swarmcode', () => {
-    const hookPath = join(testDir, '.git', 'hooks', 'pre-push');
-    mkdirSync(join(testDir, '.git', 'hooks'), { recursive: true });
-    writeFileSync(hookPath, '#!/bin/sh\n# Installed by swarmcode\ngit fetch origin 2>/dev/null\n');
+  it('skips hooks that already contain swarmcode', () => {
+    // Pre-install all hooks
+    runHook();
 
+    // Run again — should say already installed
     const output = runHook();
-
     expect(output).toContain('already installed');
   });
 
-  it('warns and does not overwrite when hook exists without swarmcode', () => {
+  it('warns and does not overwrite existing non-swarmcode hooks', () => {
     const hookPath = join(testDir, '.git', 'hooks', 'pre-push');
     mkdirSync(join(testDir, '.git', 'hooks'), { recursive: true });
     writeFileSync(hookPath, '#!/bin/sh\necho "custom hook"\n');
 
     const output = runHook();
 
-    expect(output).toContain('already exists');
-    // Should NOT overwrite
+    // Should skip pre-push but install the other 3
+    expect(output).toContain('skip  pre-push');
+    expect(output).toContain('added prepare-commit-msg');
+
+    // Should NOT overwrite the custom hook
     const content = readFileSync(hookPath, 'utf-8');
     expect(content).toContain('custom hook');
     expect(content).not.toContain('swarmcode');

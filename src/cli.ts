@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { VERSION } from './index.js';
 import { getTeamActivity } from './tools/get-team-activity.js';
+import { extractIssueId, messageHasIssueId, prependIssueId } from './branch-parser.js';
 
 export function createCLI(): Command {
   const program = new Command();
@@ -164,53 +165,182 @@ Swarmcode scans these locations for project context:
       }
     });
 
-  const PRE_PUSH_HOOK = `#!/bin/sh
+  // ---------------------------------------------------------------------------
+  // Git hooks
+  // ---------------------------------------------------------------------------
+
+  const HOOKS: Record<string, string> = {
+    'prepare-commit-msg': `#!/bin/sh
+# Installed by swarmcode — auto-prepends Linear issue ID from branch name
+swarmcode prepare-commit "$1" 2>/dev/null || true
+`,
+    'commit-msg': `#!/bin/sh
+# Installed by swarmcode — warns if commit message has no Linear issue ID
+swarmcode validate-commit "$1" 2>/dev/null || true
+`,
+    'post-commit': `#!/bin/sh
+# Installed by swarmcode — updates Linear on first commit to a branch
+swarmcode post-commit 2>/dev/null || true
+`,
+    'pre-push': `#!/bin/sh
 # Installed by swarmcode — keeps remote branches fresh
 git fetch origin 2>/dev/null
-`;
+`,
+  };
 
   program
     .command('hook')
-    .description('Install a git pre-push hook that runs git fetch before each push')
+    .description('Install git hooks for Linear integration and team coordination')
     .action(() => {
-      // Find the git repo root
       let repoRoot: string;
       try {
         repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
           encoding: 'utf-8',
         }).trim();
       } catch {
-        console.log('Not a git repository — cannot install hook.');
+        console.log('Not a git repository — cannot install hooks.');
         return;
       }
 
       const hooksDir = join(repoRoot, '.git', 'hooks');
-      const hookPath = join(hooksDir, 'pre-push');
-
-      // Check if hook already exists
-      if (existsSync(hookPath)) {
-        const existing = readFileSync(hookPath, 'utf-8');
-        if (existing.includes('swarmcode')) {
-          console.log('Swarmcode pre-push hook is already installed.');
-          return;
-        }
-        console.log(
-          `A pre-push hook already exists at ${hookPath}. ` +
-          'Remove it manually if you want swarmcode to manage it.',
-        );
-        return;
-      }
-
-      // Create hooks directory if needed
       if (!existsSync(hooksDir)) {
         mkdirSync(hooksDir, { recursive: true });
       }
 
-      // Write and make executable
-      writeFileSync(hookPath, PRE_PUSH_HOOK);
-      chmodSync(hookPath, 0o755);
+      let installed = 0;
+      let skipped = 0;
 
-      console.log(`Installed swarmcode pre-push hook at ${hookPath}`);
+      for (const [hookName, hookContent] of Object.entries(HOOKS)) {
+        const hookPath = join(hooksDir, hookName);
+
+        if (existsSync(hookPath)) {
+          const existing = readFileSync(hookPath, 'utf-8');
+          if (existing.includes('swarmcode')) {
+            skipped++;
+            continue;
+          }
+          console.log(`  skip  ${hookName} (existing hook found — remove manually to replace)`);
+          skipped++;
+          continue;
+        }
+
+        writeFileSync(hookPath, hookContent);
+        chmodSync(hookPath, 0o755);
+        console.log(`  added ${hookName}`);
+        installed++;
+      }
+
+      if (installed > 0) {
+        console.log(`\nInstalled ${installed} hook(s) in ${hooksDir}`);
+      }
+      if (skipped > 0 && installed === 0) {
+        console.log('All swarmcode hooks are already installed.');
+      }
+
+      console.log('\nHooks installed:');
+      console.log('  prepare-commit-msg  Auto-prepend issue ID from branch name to commits');
+      console.log('  commit-msg          Warn if commit message has no issue ID');
+      console.log('  post-commit         Move Linear issue to In Progress on first commit');
+      console.log('  pre-push            Fetch remote branches before pushing');
+    });
+
+  // --- Hook subcommands (called by git hooks, not by users directly) ---
+
+  program
+    .command('prepare-commit')
+    .description('(hook) Prepend Linear issue ID from branch name to commit message')
+    .argument('<msgfile>', 'Path to the commit message file')
+    .action((msgfile: string) => {
+      try {
+        const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+          encoding: 'utf-8',
+        }).trim();
+
+        if (branch === 'HEAD') return; // detached HEAD
+
+        const issueId = extractIssueId(branch);
+        if (!issueId) return; // no issue ID in branch name
+
+        const message = readFileSync(msgfile, 'utf-8');
+
+        // Don't touch merge commits, amends, or messages that already have the ID
+        if (message.startsWith('Merge ')) return;
+        if (messageHasIssueId(message)) return;
+
+        writeFileSync(msgfile, prependIssueId(message, issueId));
+      } catch {
+        // Fail silently — never block a commit
+      }
+    });
+
+  program
+    .command('validate-commit')
+    .description('(hook) Warn if commit message has no Linear issue ID')
+    .argument('<msgfile>', 'Path to the commit message file')
+    .action((msgfile: string) => {
+      try {
+        const message = readFileSync(msgfile, 'utf-8');
+
+        // Skip merge commits
+        if (message.startsWith('Merge ')) return;
+
+        if (!messageHasIssueId(message)) {
+          console.error('[swarmcode] Warning: commit message has no Linear issue ID (e.g. ENG-123)');
+          console.error('[swarmcode] Tip: use a branch name like feat/ENG-123-description for automatic prefixing');
+        }
+      } catch {
+        // Fail silently
+      }
+    });
+
+  program
+    .command('post-commit')
+    .description('(hook) On first commit to a branch, move the linked Linear issue to In Progress')
+    .action(async () => {
+      try {
+        // Only run if Linear is configured
+        const { isConfigured, startIssue } = await import('./linear.js');
+        if (!isConfigured()) return;
+
+        const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+          encoding: 'utf-8',
+        }).trim();
+
+        if (branch === 'HEAD') return;
+
+        const issueId = extractIssueId(branch);
+        if (!issueId) return;
+
+        // Check if this is the first commit on this branch (only 1 commit ahead of main)
+        let mainBranch = 'main';
+        try {
+          execFileSync('git', ['rev-parse', '--verify', 'origin/main'], { encoding: 'utf-8' });
+        } catch {
+          try {
+            execFileSync('git', ['rev-parse', '--verify', 'origin/master'], { encoding: 'utf-8' });
+            mainBranch = 'master';
+          } catch {
+            return; // Can't determine main branch
+          }
+        }
+
+        const countOutput = execFileSync(
+          'git',
+          ['rev-list', '--count', `origin/${mainBranch}..HEAD`],
+          { encoding: 'utf-8' },
+        ).trim();
+
+        const commitCount = parseInt(countOutput, 10);
+        if (commitCount !== 1) return; // Not the first commit
+
+        // First commit on this branch — start the issue in Linear
+        const result = await startIssue(issueId);
+        if (result.success) {
+          console.error(`[swarmcode] ${issueId} → In Progress (assigned to you)`);
+        }
+      } catch {
+        // Fail silently — never block a commit
+      }
     });
 
   program
