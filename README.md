@@ -2,33 +2,30 @@
 
 **Make your AI coding assistants aware of each other.**
 
-Swarmcode is an MCP server that coordinates AI coding assistants across a team using git. When one developer's AI is about to create a file, implement a function, or work in a directory — it checks what teammates have already built and avoids duplication.
+Swarmcode is an MCP server that coordinates AI coding assistants across a team using git and Linear. When one developer's AI is about to create a file, implement a function, or work in a directory — it checks what teammates have already built, checks what's assigned in Linear, and avoids duplication.
 
 ## The Problem
 
-When multiple developers use AI coding assistants on the same project, each AI works in isolation. They don't know what the other AIs are building. This leads to:
+When multiple developers use AI coding assistants on the same project, each AI works in isolation:
 
-- Two people's AIs building the same utility function independently
-- Someone's AI creating a file in a directory another person is actively working in
+- Two AIs build the same utility function independently
+- Someone's AI creates files in a directory another person is working in
 - Merge conflicts that could have been prevented
-- Wasted time rebuilding things a teammate already built
+- No one knows what's assigned, in progress, or done
 
 ## How It Works
 
-Swarmcode is a stateless MCP server. Your AI client (Claude Code, Cursor, etc.) spawns it as a subprocess. It reads directly from git and the filesystem on demand — no background processes, no config files, no manifests.
+Swarmcode reads from git and the filesystem on demand — no background processes, no manifests. It also integrates with Linear for project management, so AI agents can claim tickets, log progress, and mark work done autonomously.
 
 ```
-Your AI client                         Swarmcode MCP Server
-+------------------+                   +------------------+
-| Claude Code /    |  ---- stdio ----> | Reads git log    |
-| Cursor / etc.    |                   | Reads branches   |
-|                  |  <--- JSON -----  | Reads source     |
-| "Should I create |                   | Returns answer   |
-|  auth/login.ts?" |                   +------------------+
-+------------------+
+AI Client (Claude Code / Cursor)
+        │
+        ├── Git coordination ──→ check_path, check_conflicts, search_team_code
+        │                        "Is someone already working here?"
+        │
+        └── Linear management ──→ linear_start_issue, linear_comment, linear_complete_issue
+                                  "Claim ENG-42, log progress, mark done"
 ```
-
-**The key insight:** AI agents commit frequently. Git already knows who's working on what, which files are changing on which branches, and what functions exist. Swarmcode just makes that information available to your AI at the right time.
 
 ## Quick Start
 
@@ -41,18 +38,13 @@ npm install
 npm link
 ```
 
-### 2. Initialize (once per project)
-
-In your project directory:
+### 2. Initialize your project
 
 ```bash
-swarmcode init
-swarmcode hook
+cd /path/to/your-project
+swarmcode init          # adds coordination rules to CLAUDE.md + MCP config
+swarmcode hook          # adds pre-push fetch hook
 ```
-
-`swarmcode init` appends team coordination rules to your `CLAUDE.md`. Your AI will know to check what teammates are building before creating files or implementing functions.
-
-`swarmcode hook` installs a git pre-push hook that runs `git fetch origin` before every push, keeping everyone's view of remote branches fresh.
 
 For other AI tools:
 
@@ -61,201 +53,113 @@ swarmcode init --tool cursor    # writes to .cursorrules
 swarmcode init --tool copilot   # writes to .github/copilot-instructions.md
 ```
 
-Both commands only need to run once per project — commit the context file so all teammates get the rules.
+Commit the generated files so all teammates get the rules.
 
-It also adds a recommended project structure so `get_project_context` can find your docs:
+### 3. Connect Linear (optional but recommended)
 
-```
-your-project/
-├── README.md          — project overview
-├── PLAN.md            — project plan and team assignments
-├── CLAUDE.md          — AI coordination rules (created by swarmcode init)
-├── docs/              — architecture, design decisions, guides
-└── specs/             — design specifications
+Get a Personal API key from [Linear Settings → API](https://linear.app/settings/api) and add to your shell profile:
+
+```bash
+export SWARMCODE_LINEAR_API_KEY=lin_api_xxxxx
+export SWARMCODE_LINEAR_TEAM=ENG              # optional — filter by team key
 ```
 
-### 3. Add to your AI client's MCP config
-
-**Claude Code** (`~/.claude/settings.json` or project `.mcp.json`):
-```json
-{
-  "mcpServers": {
-    "swarmcode": {
-      "command": "swarmcode"
-    }
-  }
-}
-```
-
-**Cursor** (MCP settings):
-```json
-{
-  "mcpServers": {
-    "swarmcode": {
-      "command": "swarmcode"
-    }
-  }
-}
-```
+With Linear connected, your AI agents can autonomously claim tickets, update status, create issues, and log progress.
 
 ### 4. Everyone else does the same
 
-Each teammate: install swarmcode, add the MCP config. The `swarmcode init` step only needs to happen once per project — the context file is committed to git so everyone gets it.
+Each teammate: install swarmcode, add the MCP config, set their Linear API key. The `swarmcode init` step only needs to happen once per project.
 
 ## Tools
 
-Your AI calls these automatically based on server instructions and context file rules:
+### Git Coordination
 
-| Tool | When it's called | What it does |
-|------|-----------------|-------------|
-| `check_all` | Start of session | Combines `get_team_activity`, `get_project_context`, and `check_conflicts` in one call |
-| `get_project_context` | Start of session | Reads planning docs, specs, READMEs, and AI context files to understand the project |
-| `get_team_activity` | Start of session | Shows active contributors, their branches, and work areas |
-| `check_path` | Before creating/modifying a file | Returns who owns this area, pending changes, risk assessment |
-| `search_team_code` | Before implementing something | Finds existing exports across the codebase, including on remote branches |
-| `check_conflicts` | Proactive health check | Detects files modified on multiple branches that may conflict |
-| `get_developer` | Drill-down on a teammate | Shows a developer's recent commits, branches, and work areas |
-| `enable_auto_push` | Start of session | Automatically pushes new commits so teammates see your work immediately |
-| `disable_auto_push` | End of session (optional) | Stops auto-push and reports how many pushes were made |
+| Tool | When | What |
+|------|------|------|
+| `check_all` | Session start | Team activity + project context + conflict check in one call |
+| `check_path` | Before creating/modifying files | Who owns this area? Any pending changes? Risk level? |
+| `search_team_code` | Before implementing something | Does this function already exist on any branch? |
+| `check_conflicts` | Proactive health check | Files modified on multiple branches that may conflict |
+| `get_team_activity` | Session start | Active contributors, branches, work areas |
+| `get_developer` | Drill-down | One teammate's commits, branches, files |
+| `get_project_context` | Session start | Reads PLAN.md, specs, README, CLAUDE.md |
+| `enable_auto_push` | Session start | Pushes new commits to remote automatically |
 
-All read tools are **read-only**. Auto-push is the only write operation — it runs `git push`, never `git commit` or `git push --force`.
+### Linear Project Management
 
-## Auto-Push
+Available when `SWARMCODE_LINEAR_API_KEY` is set:
 
-The biggest limitation of git-based coordination is the gap between committing and pushing. If your AI commits locally but doesn't push, teammates can't see your work.
+| Tool | When | What |
+|------|------|------|
+| `linear_get_issues` | Session start | Active issues (In Progress + Todo) with assignees |
+| `linear_search_issues` | Before creating a ticket | Check if an issue already exists |
+| `linear_get_issue` | Before starting work | Full details, comments, sub-issues |
+| `linear_start_issue` | Claiming work | Assigns to you + moves to In Progress |
+| `linear_complete_issue` | Work is done | Moves to Done |
+| `linear_update_issue` | Editing a ticket | Change title, description, priority, assignee |
+| `linear_update_status` | Status changes | Move to any workflow state |
+| `linear_create_issue` | Found a bug/task | Create a new ticket |
+| `linear_create_sub_issue` | Breaking down work | Create a child issue under a parent |
+| `linear_comment` | Logging progress | Add a markdown comment to an issue |
+| `linear_get_teams` | Resolving IDs | List teams in the workspace |
+| `linear_get_users` | Resolving IDs | List users in the workspace |
+| `linear_get_workflow_states` | Resolving IDs | List statuses for a team |
+| `linear_get_cycles` | Sprint context | Active cycle + recent cycles |
+| `linear_get_viewer` | Identity | Who am I? |
 
-Auto-push closes this gap. When enabled, swarmcode watches for new local commits and pushes them to the remote within seconds. Your AI calls `enable_auto_push` at the start of every session (the CLAUDE.md rules tell it to).
+## Agent Workflow
 
-**What it does:**
-- Polls for new commits every 5 seconds (configurable)
-- Pushes to the current branch's remote tracking branch
-- Creates the remote tracking branch automatically for new local branches
-- Skips protected branches (main, master, develop)
+With both git and Linear connected, an AI agent's session looks like this:
 
-**What it doesn't do:**
-- Never creates commits — only pushes existing ones
-- Never force-pushes
-- Never pulls or rebases
-- Never touches other branches
+1. **Start** → `check_all` + `linear_get_issues` — see what's happening and what's available
+2. **Claim** → `linear_start_issue("ENG-42")` — take the ticket, move to In Progress
+3. **Check** → `check_path`, `search_team_code` — make sure no one else is already doing this
+4. **Work** → code, commit frequently — auto-push sends commits to remote within seconds
+5. **Log** → `linear_comment("ENG-42", "Implemented auth middleware")` — record progress
+6. **Done** → `linear_complete_issue("ENG-42")` — mark it Done
+
+Other agents see your claimed ticket in Linear and your commits via auto-fetch, so they won't duplicate your work.
 
 ## Dashboard
 
-Swarmcode includes a live web dashboard so your team can see who's working on what at a glance.
-
 ```bash
-swarmcode dashboard
+swarmcode dashboard                # http://localhost:3000
+swarmcode dashboard --port 8080    # custom port
 ```
 
-Opens at `http://localhost:3000` (use `--port` to change). The dashboard has four panels:
+Live web dashboard with four panels:
 
-- **Team Activity** — each developer as a card showing their branch, recent files, and time since last commit
-- **Conflict Radar** — files being modified on multiple branches, with severity badges and branch tags showing who's involved
-- **Branch Timeline** — 14-day horizontal timeline per branch with commit dots, ahead/behind counts vs main, and hover details
-- **Project Context** — tabbed view of your PLAN.md, specs, README, and other docs with rendered markdown
+- **Team Activity** — developer cards with branches, recent commits, work areas
+- **Conflict Radar** — files on multiple branches with severity badges
+- **Branch Timeline** — 48-hour commit timeline per branch with hover details
+- **Linear** — active issues grouped by status (shown when API key is set)
+- **Project Context** — rendered markdown from PLAN.md, specs, README
 
-Data refreshes automatically every 30 seconds via Server-Sent Events. The dashboard auto-fetches from the remote so it always shows the latest state across the team.
+Auto-updates every 30 seconds via SSE.
 
 ## CLI
 
 ```bash
-# Start MCP server (used by AI clients, not typically run manually)
-swarmcode
-
-# Add coordination rules to your AI context file
-swarmcode init
-swarmcode init --tool cursor
-swarmcode init --tool copilot
-
-# Install git pre-push hook (runs git fetch before each push)
-swarmcode hook
-
-# Check team activity from the terminal
-swarmcode status
-swarmcode status --since 7d
-
-# Launch live web dashboard
-swarmcode dashboard
-swarmcode dashboard --port 8080
+swarmcode                          # start MCP server (used by AI clients)
+swarmcode init                     # add coordination rules to CLAUDE.md
+swarmcode init --tool cursor       # write to .cursorrules instead
+swarmcode init --tool copilot      # write to .github/copilot-instructions.md
+swarmcode hook                     # install pre-push fetch hook
+swarmcode status                   # check team activity from terminal
+swarmcode status --since 7d        # look back further
+swarmcode dashboard                # launch web dashboard
 ```
-
-## What Your AI Sees
-
-When your AI is about to create `src/auth/login.ts`, it calls `check_path` and gets back:
-
-```json
-{
-  "path": "src/auth/login.ts",
-  "primary_author": "Sarah",
-  "total_commits": 12,
-  "risk": "high",
-  "reason": "File is actively owned by Sarah with recent changes on branch feat/auth"
-}
-```
-
-Your AI now knows to import from Sarah's work instead of rebuilding it.
-
-When your AI starts a session, it calls `get_project_context` and gets back the project plan:
-
-```json
-{
-  "files": [
-    { "path": "README.md", "content": "# MyApp\n..." },
-    { "path": "CLAUDE.md", "content": "## Team Coordination...\n..." },
-    { "path": "specs/auth-design.md", "content": "# Auth System\n\n## Assigned to: Sarah\n..." }
-  ],
-  "total_files": 3,
-  "truncated": false
-}
-```
-
-Now your AI knows Sarah is assigned to auth — it won't start building auth independently.
 
 ## Requirements
 
 - **Node.js 18+**
-- **A shared git repository** with a remote that all team members can push to
+- **A shared git repository** with a remote all team members can push to
 - **An MCP-compatible AI client** (Claude Code, Cursor, VS Code with MCP support)
-
-## How It Differs from v1
-
-The previous version used a background agent that watched files, wrote JSON manifests, synced them via git every 30 seconds, and injected markdown into CLAUDE.md/.cursorrules. That's all gone. The v2 architecture:
-
-- **No background processes** — purely reactive to AI tool calls
-- **No manifest files** — no `.swarmcode/` directory
-- **No config files** — no `.swarmcode/` directory or `config.yaml`
-- **No file injection** — MCP replaces CLAUDE.md/.cursorrules injection
-- **No LLM integration** — git metadata and source analysis are sufficient
-- **`swarmcode init` is back** — but instead of creating config directories, it just appends one markdown section to your AI context file
-
-See [docs/design-decisions.md](docs/design-decisions.md) for the reasoning behind these changes.
+- **Linear API key** (optional) for project management integration
 
 ## Language Support
 
-The `search_team_code` tool detects exports and definitions in these languages:
-
-| Language | Extensions | What it finds |
-|----------|-----------|--------------|
-| TypeScript | `.ts`, `.tsx` | `export function`, `export class`, `export interface`, `export type`, `export const` |
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | Same as TypeScript |
-| Python | `.py` | Top-level `def`, `class` |
-| Go | `.go` | `func`, `type ... struct/interface` |
-| Rust | `.rs` | `pub fn`, `pub struct`, `pub enum`, `pub trait` |
-| Ruby | `.rb` | Top-level `def`, `class`, `module` |
-| PHP | `.php` | `function`, `class`, `interface`, `trait` |
-| Java | `.java` | `class`, `interface`, `enum`, `public` methods |
-| Kotlin | `.kt`, `.kts` | `fun`, `class`, `object`, `interface` |
-| C# | `.cs` | `public class/interface/struct/enum`, `public` methods |
-| Swift | `.swift` | `func`, `class`, `struct`, `protocol`, `enum` |
-| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx` | `struct`, `class`, top-level functions |
-| Elixir | `.ex`, `.exs` | `defmodule`, `def` |
-| Scala | `.scala`, `.sc` | `def`, `class`, `object`, `trait` |
-
-All matching is regex-based (no AST parsing). It covers common declaration patterns reliably but won't catch unusual or dynamic exports.
-
-## Limitations
-
-- **Only sees committed + pushed work.** If a teammate hasn't pushed yet, their changes aren't visible. Auto-push and auto-fetch close this gap — commits are pushed within seconds and fetched by teammates within 30 seconds.
-- **Remote branches required.** Conflict detection, path checking, and branch-aware export search all analyze remote branches — local-only branches from teammates aren't visible.
+`search_team_code` detects exports in: TypeScript, JavaScript, Python, Go, Rust, Ruby, PHP, Java, Kotlin, C#, Swift, C/C++, Elixir, and Scala. Regex-based — covers common patterns reliably.
 
 ## Documentation
 
