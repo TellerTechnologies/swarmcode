@@ -87,6 +87,53 @@ export interface LinearCommentResult {
   error?: string;
 }
 
+export interface LinearProject {
+  id: string;
+  name: string;
+  description: string | null;
+  state: string;
+  url: string;
+  progress: number;
+  targetDate: string | null;
+  startDate: string | null;
+  lead: string | null;
+  teamIds: string[];
+}
+
+export interface LinearProjectUpdate {
+  id: string;
+  body: string;
+  health: string;
+  createdAt: string;
+  user: string;
+}
+
+export interface LinearIssueRelation {
+  id: string;
+  type: string;
+  relatedIssue: { identifier: string; title: string; status: string };
+}
+
+export interface LinearLabel {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface LinearHistoryEntry {
+  id: string;
+  createdAt: string;
+  fromState: string | null;
+  toState: string | null;
+  actor: string | null;
+  updatedDescription: string | null;
+}
+
+export interface GenericResult {
+  success: boolean;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // GraphQL queries & mutations
 // ---------------------------------------------------------------------------
@@ -250,6 +297,173 @@ const CYCLES_QUERY = `
         id name number startsAt endsAt
         issues { nodes { id } }
         completedScopeHistory
+      }
+    }
+  }
+`;
+
+// --- Projects ---
+
+const PROJECTS_QUERY = `
+  query Projects($limit: Int!) {
+    projects(first: $limit, orderBy: updatedAt) {
+      nodes {
+        id name description state url progress targetDate startDate
+        lead { name }
+        teams { nodes { id } }
+      }
+    }
+  }
+`;
+
+const PROJECT_ISSUES_QUERY = `
+  query ProjectIssues($projectId: String!, $limit: Int!) {
+    project(id: $projectId) {
+      issues(first: $limit) {
+        nodes { ${ISSUE_FIELDS} }
+      }
+    }
+  }
+`;
+
+const CREATE_PROJECT_MUTATION = `
+  mutation CreateProject($input: ProjectCreateInput!) {
+    projectCreate(input: $input) {
+      success
+      project { id name state url }
+    }
+  }
+`;
+
+const UPDATE_PROJECT_MUTATION = `
+  mutation UpdateProject($id: String!, $input: ProjectUpdateInput!) {
+    projectUpdate(id: $id, input: $input) {
+      success
+      project { id name state url }
+    }
+  }
+`;
+
+const ADD_ISSUE_TO_PROJECT_MUTATION = `
+  mutation AddIssueToProject($issueId: String!, $projectId: String!) {
+    issueUpdate(id: $issueId, input: { projectId: $projectId }) {
+      success
+    }
+  }
+`;
+
+// --- Project Updates ---
+
+const PROJECT_UPDATES_QUERY = `
+  query ProjectUpdates($projectId: String!, $limit: Int!) {
+    project(id: $projectId) {
+      projectUpdates(first: $limit) {
+        nodes {
+          id body health createdAt
+          user { name }
+        }
+      }
+    }
+  }
+`;
+
+const CREATE_PROJECT_UPDATE_MUTATION = `
+  mutation CreateProjectUpdate($projectId: String!, $body: String!, $health: ProjectUpdateHealthType!) {
+    projectUpdateCreate(input: { projectId: $projectId, body: $body, health: $health }) {
+      success
+      projectUpdate { id }
+    }
+  }
+`;
+
+// --- Issue extras ---
+
+const ADD_ISSUE_TO_CYCLE_MUTATION = `
+  mutation AddIssueToCycle($issueId: String!, $cycleId: String!) {
+    issueUpdate(id: $issueId, input: { cycleId: $cycleId }) {
+      success
+    }
+  }
+`;
+
+const ARCHIVE_ISSUE_MUTATION = `
+  mutation ArchiveIssue($issueId: String!) {
+    issueArchive(id: $issueId) {
+      success
+    }
+  }
+`;
+
+const CREATE_ISSUE_RELATION_MUTATION = `
+  mutation CreateIssueRelation($issueId: String!, $relatedIssueId: String!, $type: IssueRelationType!) {
+    issueRelationCreate(input: { issueId: $issueId, relatedIssueId: $relatedIssueId, type: $type }) {
+      success
+      issueRelation { id type relatedIssue { identifier title state { name } } }
+    }
+  }
+`;
+
+const ISSUE_RELATIONS_QUERY = `
+  query IssueRelations($identifier: String!) {
+    issueSearch(query: $identifier, first: 1) {
+      nodes {
+        relations {
+          nodes {
+            id type
+            relatedIssue { identifier title state { name } }
+          }
+        }
+        inverseRelations {
+          nodes {
+            id type
+            issue { identifier title state { name } }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const ISSUE_HISTORY_QUERY = `
+  query IssueHistory($identifier: String!, $limit: Int!) {
+    issueSearch(query: $identifier, first: 1) {
+      nodes {
+        history(first: $limit) {
+          nodes {
+            id createdAt
+            fromState { name }
+            toState { name }
+            actor { name }
+            updatedDescription
+          }
+        }
+      }
+    }
+  }
+`;
+
+const LABELS_QUERY = `
+  query Labels {
+    issueLabels {
+      nodes { id name color }
+    }
+  }
+`;
+
+const ADD_LABEL_MUTATION = `
+  mutation AddLabel($issueId: String!, $labelIds: [String!]!) {
+    issueUpdate(id: $issueId, input: { labelIds: $labelIds }) {
+      success
+    }
+  }
+`;
+
+const ISSUE_LABELS_QUERY = `
+  query IssueLabels($identifier: String!) {
+    issueSearch(query: $identifier, first: 1) {
+      nodes {
+        id
+        labels { nodes { id name } }
       }
     }
   }
@@ -629,6 +843,285 @@ export async function commentOnIssue(identifier: string, body: string): Promise<
     };
   } catch (err: any) {
     return { success: false, commentId: null, error: err.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API — Projects
+// ---------------------------------------------------------------------------
+
+/** List projects. */
+export async function getProjects(limit: number = 25): Promise<LinearProject[]> {
+  const apiKey = requireApiKey();
+  const data = await gql(apiKey, PROJECTS_QUERY, { limit });
+  return (data.projects?.nodes ?? []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description ?? null,
+    state: p.state ?? 'planned',
+    url: p.url ?? '',
+    progress: p.progress ?? 0,
+    targetDate: p.targetDate ?? null,
+    startDate: p.startDate ?? null,
+    lead: p.lead?.name ?? null,
+    teamIds: (p.teams?.nodes ?? []).map((t: any) => t.id),
+  }));
+}
+
+/** Get issues in a project. */
+export async function getProjectIssues(projectId: string, limit: number = 50): Promise<LinearIssue[]> {
+  const apiKey = requireApiKey();
+  const data = await gql(apiKey, PROJECT_ISSUES_QUERY, { projectId, limit });
+  return (data.project?.issues?.nodes ?? []).map(parseIssue);
+}
+
+/** Create a project. */
+export async function createProject(fields: {
+  name: string;
+  teamIds: string[];
+  description?: string;
+  state?: string;
+  targetDate?: string;
+}): Promise<{ success: boolean; project: { id: string; name: string; state: string; url: string } | null; error?: string }> {
+  const apiKey = requireApiKey();
+  try {
+    const result = await gql(apiKey, CREATE_PROJECT_MUTATION, { input: fields });
+    const p = result.projectCreate?.project;
+    return {
+      success: result.projectCreate?.success ?? false,
+      project: p ? { id: p.id, name: p.name, state: p.state, url: p.url } : null,
+    };
+  } catch (err: any) {
+    return { success: false, project: null, error: err.message };
+  }
+}
+
+/** Update a project. */
+export async function updateProject(
+  projectId: string,
+  fields: { name?: string; description?: string; state?: string; targetDate?: string },
+): Promise<{ success: boolean; project: { id: string; name: string; state: string; url: string } | null; error?: string }> {
+  const apiKey = requireApiKey();
+  try {
+    const result = await gql(apiKey, UPDATE_PROJECT_MUTATION, { id: projectId, input: fields });
+    const p = result.projectUpdate?.project;
+    return {
+      success: result.projectUpdate?.success ?? false,
+      project: p ? { id: p.id, name: p.name, state: p.state, url: p.url } : null,
+    };
+  } catch (err: any) {
+    return { success: false, project: null, error: err.message };
+  }
+}
+
+/** Add an issue to a project. */
+export async function addIssueToProject(identifier: string, projectId: string): Promise<GenericResult> {
+  const apiKey = requireApiKey();
+  try {
+    const issue = await lookupIssue(apiKey, identifier);
+    const result = await gql(apiKey, ADD_ISSUE_TO_PROJECT_MUTATION, { issueId: issue.id, projectId });
+    return { success: result.issueUpdate?.success ?? false };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API — Project Updates
+// ---------------------------------------------------------------------------
+
+/** Get project updates (status reports with health). */
+export async function getProjectUpdates(projectId: string, limit: number = 10): Promise<LinearProjectUpdate[]> {
+  const apiKey = requireApiKey();
+  const data = await gql(apiKey, PROJECT_UPDATES_QUERY, { projectId, limit });
+  return (data.project?.projectUpdates?.nodes ?? []).map((u: any) => ({
+    id: u.id,
+    body: u.body ?? '',
+    health: u.health ?? 'onTrack',
+    createdAt: u.createdAt ?? '',
+    user: u.user?.name ?? 'unknown',
+  }));
+}
+
+/** Create a project update (status report). */
+export async function createProjectUpdate(
+  projectId: string,
+  body: string,
+  health: string = 'onTrack',
+): Promise<{ success: boolean; updateId: string | null; error?: string }> {
+  const apiKey = requireApiKey();
+  try {
+    const result = await gql(apiKey, CREATE_PROJECT_UPDATE_MUTATION, { projectId, body, health });
+    return {
+      success: result.projectUpdateCreate?.success ?? false,
+      updateId: result.projectUpdateCreate?.projectUpdate?.id ?? null,
+    };
+  } catch (err: any) {
+    return { success: false, updateId: null, error: err.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API — Issue extras
+// ---------------------------------------------------------------------------
+
+/** Add an issue to a cycle. */
+export async function addIssueToCycle(identifier: string, cycleId: string): Promise<GenericResult> {
+  const apiKey = requireApiKey();
+  try {
+    const issue = await lookupIssue(apiKey, identifier);
+    const result = await gql(apiKey, ADD_ISSUE_TO_CYCLE_MUTATION, { issueId: issue.id, cycleId });
+    return { success: result.issueUpdate?.success ?? false };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Archive an issue. */
+export async function archiveIssue(identifier: string): Promise<GenericResult> {
+  const apiKey = requireApiKey();
+  try {
+    const issue = await lookupIssue(apiKey, identifier);
+    const result = await gql(apiKey, ARCHIVE_ISSUE_MUTATION, { issueId: issue.id });
+    return { success: result.issueArchive?.success ?? false };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Create a relation between two issues. */
+export async function createIssueRelation(
+  identifier: string,
+  relatedIdentifier: string,
+  type: string,
+): Promise<{ success: boolean; relation: LinearIssueRelation | null; error?: string }> {
+  const apiKey = requireApiKey();
+  try {
+    const issue = await lookupIssue(apiKey, identifier);
+    const related = await lookupIssue(apiKey, relatedIdentifier);
+    const result = await gql(apiKey, CREATE_ISSUE_RELATION_MUTATION, {
+      issueId: issue.id,
+      relatedIssueId: related.id,
+      type,
+    });
+    const rel = result.issueRelationCreate?.issueRelation;
+    return {
+      success: result.issueRelationCreate?.success ?? false,
+      relation: rel ? {
+        id: rel.id,
+        type: rel.type,
+        relatedIssue: {
+          identifier: rel.relatedIssue?.identifier ?? '',
+          title: rel.relatedIssue?.title ?? '',
+          status: rel.relatedIssue?.state?.name ?? '',
+        },
+      } : null,
+    };
+  } catch (err: any) {
+    return { success: false, relation: null, error: err.message };
+  }
+}
+
+/** Get relations for an issue. */
+export async function getIssueRelations(identifier: string): Promise<LinearIssueRelation[]> {
+  const apiKey = requireApiKey();
+  const data = await gql(apiKey, ISSUE_RELATIONS_QUERY, { identifier });
+  const node = data.issueSearch?.nodes?.[0];
+  if (!node) return [];
+
+  const relations: LinearIssueRelation[] = [];
+  for (const r of (node.relations?.nodes ?? [])) {
+    relations.push({
+      id: r.id,
+      type: r.type,
+      relatedIssue: {
+        identifier: r.relatedIssue?.identifier ?? '',
+        title: r.relatedIssue?.title ?? '',
+        status: r.relatedIssue?.state?.name ?? '',
+      },
+    });
+  }
+  for (const r of (node.inverseRelations?.nodes ?? [])) {
+    relations.push({
+      id: r.id,
+      type: `inverse_${r.type}`,
+      relatedIssue: {
+        identifier: r.issue?.identifier ?? '',
+        title: r.issue?.title ?? '',
+        status: r.issue?.state?.name ?? '',
+      },
+    });
+  }
+  return relations;
+}
+
+/** Get change history for an issue. */
+export async function getIssueHistory(identifier: string, limit: number = 20): Promise<LinearHistoryEntry[]> {
+  const apiKey = requireApiKey();
+  const data = await gql(apiKey, ISSUE_HISTORY_QUERY, { identifier, limit });
+  const node = data.issueSearch?.nodes?.[0];
+  if (!node) return [];
+  return (node.history?.nodes ?? []).map((h: any) => ({
+    id: h.id,
+    createdAt: h.createdAt ?? '',
+    fromState: h.fromState?.name ?? null,
+    toState: h.toState?.name ?? null,
+    actor: h.actor?.name ?? null,
+    updatedDescription: h.updatedDescription ?? null,
+  }));
+}
+
+/** Get all labels in the workspace. */
+export async function getLabels(): Promise<LinearLabel[]> {
+  const apiKey = requireApiKey();
+  const data = await gql(apiKey, LABELS_QUERY);
+  return (data.issueLabels?.nodes ?? []).map((l: any) => ({
+    id: l.id,
+    name: l.name,
+    color: l.color ?? '',
+  }));
+}
+
+/** Add a label to an issue. */
+export async function addIssueLabel(identifier: string, labelId: string): Promise<GenericResult> {
+  const apiKey = requireApiKey();
+  try {
+    // Get current labels first so we don't overwrite them
+    const labelData = await gql(apiKey, ISSUE_LABELS_QUERY, { identifier });
+    const node = labelData.issueSearch?.nodes?.[0];
+    if (!node) return { success: false, error: `Issue "${identifier}" not found` };
+
+    const currentLabelIds = (node.labels?.nodes ?? []).map((l: any) => l.id);
+    if (currentLabelIds.includes(labelId)) return { success: true }; // already has it
+
+    const result = await gql(apiKey, ADD_LABEL_MUTATION, {
+      issueId: node.id,
+      labelIds: [...currentLabelIds, labelId],
+    });
+    return { success: result.issueUpdate?.success ?? false };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Remove a label from an issue. */
+export async function removeIssueLabel(identifier: string, labelId: string): Promise<GenericResult> {
+  const apiKey = requireApiKey();
+  try {
+    const labelData = await gql(apiKey, ISSUE_LABELS_QUERY, { identifier });
+    const node = labelData.issueSearch?.nodes?.[0];
+    if (!node) return { success: false, error: `Issue "${identifier}" not found` };
+
+    const currentLabelIds = (node.labels?.nodes ?? []).map((l: any) => l.id);
+    const newLabelIds = currentLabelIds.filter((id: string) => id !== labelId);
+
+    const result = await gql(apiKey, ADD_LABEL_MUTATION, {
+      issueId: node.id,
+      labelIds: newLabelIds,
+    });
+    return { success: result.issueUpdate?.success ?? false };
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }
 

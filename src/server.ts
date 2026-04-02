@@ -27,6 +27,21 @@ import {
   createIssue,
   createSubIssue,
   commentOnIssue,
+  getProjects,
+  getProjectIssues,
+  createProject,
+  updateProject,
+  addIssueToProject,
+  getProjectUpdates,
+  createProjectUpdate,
+  addIssueToCycle,
+  archiveIssue,
+  createIssueRelation,
+  getIssueRelations,
+  getIssueHistory,
+  getLabels,
+  addIssueLabel,
+  removeIssueLabel,
 } from './linear.js';
 
 export function createServer(): McpServer {
@@ -520,6 +535,323 @@ export function createServer(): McpServer {
       async ({ issue, body }) => {
         try {
           const result = await commentOnIssue(issue, body);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    // --- Project tools ---
+
+    server.registerTool(
+      'linear_get_projects',
+      {
+        title: 'Linear: Get Projects',
+        description: 'List projects in the workspace. Shows name, state, progress, lead, and target date. Projects group related issues into a larger initiative.',
+        inputSchema: {
+          limit: z.number().optional().describe('Max results (default: 25)'),
+        },
+      },
+      async ({ limit }) => {
+        try {
+          const projects = await getProjects(limit ?? 25);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(projects, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_project_issues',
+      {
+        title: 'Linear: Get Project Issues',
+        description: 'Get all issues in a project. Use to see overall progress and what remains.',
+        inputSchema: {
+          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+          limit: z.number().optional().describe('Max results (default: 50)'),
+        },
+      },
+      async ({ projectId, limit }) => {
+        try {
+          const issues = await getProjectIssues(projectId, limit ?? 50);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(issues, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_create_project',
+      {
+        title: 'Linear: Create Project',
+        description: 'Create a new project to group related issues. Projects have a state (planned, started, paused, completed, canceled) and optional target date.',
+        inputSchema: {
+          name: z.string().describe('Project name'),
+          teamIds: z.array(z.string()).describe('Team IDs to associate (get from linear_get_teams)'),
+          description: z.string().optional().describe('Project description'),
+          state: z.string().optional().describe('Initial state: "planned", "started", "paused", "completed", "canceled"'),
+          targetDate: z.string().optional().describe('Target completion date (YYYY-MM-DD)'),
+        },
+      },
+      async ({ name, teamIds, description, state, targetDate }) => {
+        const fields: Record<string, unknown> = { name, teamIds };
+        if (description !== undefined) fields.description = description;
+        if (state !== undefined) fields.state = state;
+        if (targetDate !== undefined) fields.targetDate = targetDate;
+        try {
+          const result = await createProject(fields as any);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_update_project',
+      {
+        title: 'Linear: Update Project',
+        description: 'Update a project\'s name, description, state, or target date.',
+        inputSchema: {
+          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+          name: z.string().optional().describe('New name'),
+          description: z.string().optional().describe('New description'),
+          state: z.string().optional().describe('"planned", "started", "paused", "completed", "canceled"'),
+          targetDate: z.string().optional().describe('Target date (YYYY-MM-DD)'),
+        },
+      },
+      async ({ projectId, name, description, state, targetDate }) => {
+        const fields: Record<string, unknown> = {};
+        if (name !== undefined) fields.name = name;
+        if (description !== undefined) fields.description = description;
+        if (state !== undefined) fields.state = state;
+        if (targetDate !== undefined) fields.targetDate = targetDate;
+        try {
+          const result = await updateProject(projectId, fields as any);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_add_issue_to_project',
+      {
+        title: 'Linear: Add Issue to Project',
+        description: 'Add an existing issue to a project.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+        },
+      },
+      async ({ issue, projectId }) => {
+        try {
+          const result = await addIssueToProject(issue, projectId);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    // --- Project Updates ---
+
+    server.registerTool(
+      'linear_get_project_updates',
+      {
+        title: 'Linear: Get Project Updates',
+        description: 'Get status updates for a project. Shows health (onTrack, atRisk, offTrack), body, author, and date. Use to understand project health before starting work.',
+        inputSchema: {
+          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+          limit: z.number().optional().describe('Max results (default: 10)'),
+        },
+      },
+      async ({ projectId, limit }) => {
+        try {
+          const updates = await getProjectUpdates(projectId, limit ?? 10);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(updates, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_create_project_update',
+      {
+        title: 'Linear: Create Project Update',
+        description: 'Post a status update on a project with a health indicator. Use after completing significant milestones.',
+        inputSchema: {
+          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+          body: z.string().describe('Update body (markdown)'),
+          health: z.string().optional().describe('"onTrack", "atRisk", or "offTrack" (default: "onTrack")'),
+        },
+      },
+      async ({ projectId, body, health }) => {
+        try {
+          const result = await createProjectUpdate(projectId, body, health ?? 'onTrack');
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    // --- Issue extras ---
+
+    server.registerTool(
+      'linear_add_issue_to_cycle',
+      {
+        title: 'Linear: Add Issue to Cycle',
+        description: 'Add an issue to a sprint cycle.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          cycleId: z.string().describe('Cycle ID (get from linear_get_cycles)'),
+        },
+      },
+      async ({ issue, cycleId }) => {
+        try {
+          const result = await addIssueToCycle(issue, cycleId);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_archive_issue',
+      {
+        title: 'Linear: Archive Issue',
+        description: 'Archive an issue. Use for issues that are no longer relevant.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+        },
+      },
+      async ({ issue }) => {
+        try {
+          const result = await archiveIssue(issue);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_create_issue_relation',
+      {
+        title: 'Linear: Create Issue Relation',
+        description: 'Create a relation between two issues (blocks, blocked by, related, duplicate).',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          relatedIssue: z.string().describe('Related issue identifier (e.g. "ENG-43")'),
+          type: z.string().describe('Relation type: "blocks", "blocked_by", "related", "duplicate", "duplicate_of"'),
+        },
+      },
+      async ({ issue, relatedIssue, type }) => {
+        try {
+          const result = await createIssueRelation(issue, relatedIssue, type);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_issue_relations',
+      {
+        title: 'Linear: Get Issue Relations',
+        description: 'Get all relations for an issue (blocks, blocked by, related, duplicates). Use to understand dependencies.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+        },
+      },
+      async ({ issue }) => {
+        try {
+          const relations = await getIssueRelations(issue);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(relations, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_issue_history',
+      {
+        title: 'Linear: Get Issue History',
+        description: 'Get the change history for an issue — status transitions, who changed what, when.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          limit: z.number().optional().describe('Max entries (default: 20)'),
+        },
+      },
+      async ({ issue, limit }) => {
+        try {
+          const history = await getIssueHistory(issue, limit ?? 20);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(history, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_get_labels',
+      {
+        title: 'Linear: Get Labels',
+        description: 'List all issue labels in the workspace. Returns label IDs, names, and colors.',
+        inputSchema: {},
+      },
+      async () => {
+        try {
+          const labels = await getLabels();
+          return { content: [{ type: 'text' as const, text: JSON.stringify(labels, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_add_issue_label',
+      {
+        title: 'Linear: Add Label to Issue',
+        description: 'Add a label to an issue. Preserves existing labels.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          labelId: z.string().describe('Label ID (get from linear_get_labels)'),
+        },
+      },
+      async ({ issue, labelId }) => {
+        try {
+          const result = await addIssueLabel(issue, labelId);
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+        }
+      },
+    );
+
+    server.registerTool(
+      'linear_remove_issue_label',
+      {
+        title: 'Linear: Remove Label from Issue',
+        description: 'Remove a label from an issue.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          labelId: z.string().describe('Label ID (get from linear_get_labels)'),
+        },
+      },
+      async ({ issue, labelId }) => {
+        try {
+          const result = await removeIssueLabel(issue, labelId);
           return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (err: any) {
           return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
