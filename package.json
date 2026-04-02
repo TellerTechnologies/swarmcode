@@ -1,6 +1,6 @@
 {
   "name": "swarmcode",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "MCP server that coordinates AI coding assistants using git",
   "main": "src/index.ts",
   "type": "module",
@@ -16,9 +16,15 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
-  "keywords": ["mcp", "ai", "git", "coordination"],
+  "keywords": [
+    "mcp",
+    "ai",
+    "git",
+    "coordination"
+  ],
   "license": "MIT",
   "dependencies": {
+    "@linear/sdk": "^80.1.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "commander": "^14.0.3",
     "tsx": "^4.21.0",

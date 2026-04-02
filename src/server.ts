@@ -17,849 +17,552 @@ import {
   getIssue,
   getTeams as getLinearTeams,
   getUsers as getLinearUsers,
-  getWorkflowStates,
-  getCycles,
   getViewer,
   startIssue,
   completeIssue,
-  updateIssueStatus,
-  updateIssue,
   createIssue,
   createSubIssue,
   commentOnIssue,
   getProjects,
   getProjectIssues,
-  createProject,
-  updateProject,
-  addIssueToProject,
   getProjectUpdates,
   createProjectUpdate,
-  addIssueToCycle,
+  updateProject,
+  addIssueToProject,
+  updateIssue,
   archiveIssue,
   createIssueRelation,
   getIssueRelations,
-  getIssueHistory,
   getLabels,
   addIssueLabel,
   removeIssueLabel,
 } from './linear.js';
 
+function json(data: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+function err(error: string) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify({ error }, null, 2) }], isError: true as const };
+}
+
+async function tryLinear<T>(fn: () => Promise<T>) {
+  try {
+    return json(await fn());
+  } catch (e: any) {
+    return err(e.message);
+  }
+}
+
 export function createServer(): McpServer {
+  const hasLinear = linearConfigured();
+
+  const instructions = [
+    'You have access to team coordination tools. Use them:',
+    '',
+    '## Session Start',
+    '- Call start_session immediately — it gives you team activity, project context, conflicts, and auto-push in one call',
+    hasLinear ? '- Call linear_get_issues to see what work is available and assigned' : '',
+    '',
+    '## Before Writing Code',
+    '- Before creating files in a new directory → call check_path',
+    '- Before implementing a function that might exist → call search_code',
+    '- Do not rebuild what a teammate has already built — import it',
+    '',
+    '## Working on a Ticket',
+    hasLinear ? '- Call pick_issue to claim a ticket — it assigns to you, moves to In Progress, and returns the branch name to checkout' : '',
+    hasLinear ? '- Create your branch using the returned branchName (e.g. feat/eng-123-auth-flow)' : '',
+    hasLinear ? '- Git hooks auto-prepend the issue ID to commit messages and update Linear on first commit' : '',
+    '',
+    '## Committing',
+    '- Commit early and often — after each logical unit of work (new function, bug fix, test added)',
+    '- Small, frequent commits are pushed automatically and let teammates see your progress in real-time',
+    '',
+    '## Progress & Completion',
+    hasLinear ? '- After meaningful milestones (NOT every commit) → call log_progress to record what was accomplished' : '',
+    hasLinear ? '- When work is complete and merged → call complete_issue to mark it Done' : '',
+    hasLinear ? '- If you discover a bug or needed task → call create_issue to track it' : '',
+    '',
+    hasLinear ? '- Do not work on issues that are already In Progress and assigned to someone else' : '',
+  ].filter(Boolean).join('\n');
+
   const server = new McpServer(
     { name: 'swarmcode', version: VERSION },
-    {
-      instructions: [
-        'You have access to team coordination tools. Use them:',
-        '- At the very start of a session → call check_all (combines team activity, project context, and conflict check)',
-        '- Before creating files in a new directory → call check_path',
-        '- Before implementing a function that might already exist → call search_team_code',
-        '- When something conflicts or breaks unexpectedly → call check_conflicts',
-        '- At the start of a session → call enable_auto_push so teammates see your work immediately',
-        'Do not rebuild what a teammate has already built. Import from their work instead.',
-        '',
-        'Commit early and often — after each logical unit of work (new function, bug fix, test added, file created).',
-        'Small, frequent commits are pushed automatically and let teammates see your progress in real-time.',
-        'Waiting until the end to commit one large changeset defeats coordination — teammates cannot see or avoid your work.',
-        '',
-        'If Linear is configured:',
-        '- At the start of a session → call linear_get_issues to see what is assigned and available',
-        '- When picking a ticket → create your branch using the branchName field from the issue (e.g. feat/eng-123-auth-flow)',
-        '  Git hooks will automatically: prepend the issue ID to commit messages, and move the issue to In Progress on your first commit',
-        '- You do NOT need to call linear_start_issue manually — the post-commit hook handles it when you use the correct branch name',
-        '- After meaningful milestones (not every commit) → call linear_comment to log what was accomplished',
-        '- When the work is complete and merged → call linear_complete_issue to mark it Done',
-        '- Do not work on issues that are already In Progress and assigned to someone else',
-        '- If you discover a bug or needed task → call linear_create_issue to track it',
-      ].join('\n'),
-    },
+    { instructions },
   );
 
+  // =========================================================================
+  // Session
+  // =========================================================================
+
   server.registerTool(
-    'get_team_activity',
+    'start_session',
     {
-      title: 'Get Team Activity',
-      description: 'Overview of recent work across all contributors. Shows who is active, what branches they are on, and what areas they are working in.',
+      title: 'Start Session',
+      description: 'Everything you need at session start in one call: team activity, project context, conflict check, and auto-push enabled. Call this first.',
       inputSchema: {
-        since: z.string().default('24h').describe('How far back to look (git date format, e.g. "24h", "7d", "2w")'),
+        since: z.string().default('24h').describe('How far back to look for team activity'),
       },
     },
     ({ since }) => {
-      const result = getTeamActivity({ since });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      try {
+        const data = checkAll({ since });
+        enableAutoPush({ interval: 30 });
+        return json({ ...data, auto_push: 'enabled' });
+      } catch (e: any) {
+        return err(e.message);
+      }
     },
   );
+
+  // =========================================================================
+  // Git Coordination
+  // =========================================================================
 
   server.registerTool(
     'check_path',
     {
       title: 'Check Path',
-      description: 'Safety check before creating or modifying files. Returns who owns this area, pending changes on other branches, and a risk assessment.',
+      description: 'Before creating or modifying files: who owns this area, pending changes, risk assessment.',
       inputSchema: {
-        path: z.string().describe('File or directory path to check (relative to repo root)'),
+        path: z.string().describe('File or directory path (relative to repo root)'),
       },
     },
-    ({ path }) => {
-      const result = checkPath({ path });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    ({ path }) => json(checkPath({ path })),
   );
 
   server.registerTool(
-    'search_team_code',
+    'search_code',
     {
-      title: 'Search Team Code',
-      description: 'Search for existing exports (functions, classes, types, constants) across the codebase. Use before implementing something that might already exist.',
+      title: 'Search Code',
+      description: 'Search for existing exports (functions, classes, types) across the codebase and remote branches. Use before implementing something.',
       inputSchema: {
-        query: z.string().describe('Function, type, or component name to search for'),
-        path: z.string().optional().describe('Narrow search to a directory (e.g. "src/auth")'),
+        query: z.string().describe('Function, type, or component name'),
+        path: z.string().optional().describe('Narrow to a directory (e.g. "src/auth")'),
       },
     },
-    ({ query, path }) => {
-      const result = searchTeamCode({ query, path });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    ({ query, path }) => json(searchTeamCode({ query, path })),
   );
 
   server.registerTool(
     'check_conflicts',
     {
       title: 'Check Conflicts',
-      description: 'Detect potential merge conflicts across active branches. Shows files modified on multiple branches and local changes that overlap.',
+      description: 'Detect files modified on multiple branches that may cause merge conflicts.',
       inputSchema: {},
     },
-    () => {
-      const result = checkConflicts();
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    () => json(checkConflicts()),
   );
 
   server.registerTool(
     'get_developer',
     {
       title: 'Get Developer',
-      description: 'Drill-down on one teammate. Shows their recent commits, active branches, and primary work areas.',
+      description: 'Drill down on one teammate: recent commits, branches, work areas.',
       inputSchema: {
-        name: z.string().describe('Developer name (fuzzy matched against git authors)'),
+        name: z.string().describe('Developer name (fuzzy matched)'),
       },
     },
-    ({ name }) => {
-      const result = getDeveloper({ name });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    },
-  );
-
-  server.registerTool(
-    'enable_auto_push',
-    {
-      title: 'Enable Auto-Push',
-      description: 'Start automatically pushing new commits to the remote. Teammates will see your work within seconds of committing. Call this at the start of every session.',
-      inputSchema: {
-        interval: z.number().optional().describe('Seconds between push checks (default: 30)'),
-      },
-    },
-    ({ interval }) => {
-      try {
-        const result = enableAutoPush({ interval });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-      }
-    },
-  );
-
-  server.registerTool(
-    'disable_auto_push',
-    {
-      title: 'Disable Auto-Push',
-      description: 'Stop automatic pushing. Returns how many pushes were made during the session.',
-      inputSchema: {},
-    },
-    () => {
-      const result = disableAutoPush();
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    ({ name }) => json(getDeveloper({ name })),
   );
 
   server.registerTool(
     'get_project_context',
     {
       title: 'Get Project Context',
-      description: 'Read planning docs, specs, READMEs, and AI context files (CLAUDE.md, .cursorrules, etc.) to understand the project plan, architecture, and team assignments.',
+      description: 'Read planning docs, specs, READMEs, and AI context files.',
       inputSchema: {
-        path: z.string().optional().describe('Narrow to a specific directory (e.g. "specs/")'),
-        query: z.string().optional().describe('Only return files whose path or content matches (case-insensitive)'),
+        path: z.string().optional().describe('Narrow to a directory'),
+        query: z.string().optional().describe('Filter by content match'),
       },
     },
-    ({ path, query }) => {
-      const result = getProjectContext({ path, query });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    ({ path, query }) => json(getProjectContext({ path, query })),
   );
 
   server.registerTool(
-    'check_all',
+    'get_team_activity',
     {
-      title: 'Check All',
-      description: 'Session startup tool. Runs get_team_activity, get_project_context, and check_conflicts in one call. Returns all three results combined so the AI gets full context immediately.',
+      title: 'Get Team Activity',
+      description: 'Overview of who is active, their branches, and work areas. Already included in start_session.',
       inputSchema: {
-        since: z.string().default('24h').describe('How far back to look for team activity (git date format, e.g. "24h", "7d", "2w")'),
+        since: z.string().default('24h').describe('How far back to look'),
       },
     },
-    ({ since }) => {
-      try {
-        const result = checkAll({ since });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-      }
-    },
+    ({ since }) => json(getTeamActivity({ since })),
   );
 
-  // ---------------------------------------------------------------------------
-  // Linear tools (only registered if API key is configured)
-  // ---------------------------------------------------------------------------
+  server.registerTool(
+    'disable_auto_push',
+    {
+      title: 'Disable Auto-Push',
+      description: 'Stop automatic pushing. Returns how many pushes were made.',
+      inputSchema: {},
+    },
+    () => json(disableAutoPush()),
+  );
 
-  if (linearConfigured()) {
+  // =========================================================================
+  // Linear — Issues (only registered if API key is set)
+  // =========================================================================
 
-    // --- Read tools ---
-
+  if (hasLinear) {
     server.registerTool(
       'linear_get_issues',
       {
-        title: 'Linear: Get Active Issues',
-        description: 'Fetch active issues from Linear (In Progress + Todo). Shows identifier, title, assignee, status, priority, and branch name. Use at session start to see what work is available.',
+        title: 'Get Issues',
+        description: 'Active issues from Linear (In Progress + Todo). Shows identifier, title, assignee, status, priority, and suggested branch name.',
         inputSchema: {},
       },
-      async () => {
-        try {
-          const data = await getLinearData();
-          return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      () => tryLinear(() => getLinearData()),
     );
 
     server.registerTool(
-      'linear_search_issues',
+      'pick_issue',
       {
-        title: 'Linear: Search Issues',
-        description: 'Search Linear issues by text query. Finds issues matching title, description, identifier, or comments. Use to check if a ticket already exists before creating one.',
+        title: 'Pick Issue',
+        description: 'Claim a Linear issue: assigns to you, moves to In Progress, and returns the branch name to checkout. Use this instead of linear_start_issue.',
         inputSchema: {
-          query: z.string().describe('Search text (e.g. "auth login bug", "ENG-42")'),
-          limit: z.number().optional().describe('Max results to return (default: 20)'),
-        },
-      },
-      async ({ query, limit }) => {
-        try {
-          const results = await searchIssues(query, limit ?? 20);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_issue',
-      {
-        title: 'Linear: Get Issue Details',
-        description: 'Get full details on a specific issue: description, comments, sub-issues, labels, dates, team. Use before starting work to understand requirements.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-        },
-      },
-      async ({ issue }) => {
-        try {
-          const result = await getIssue(issue);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_teams',
-      {
-        title: 'Linear: Get Teams',
-        description: 'List all teams in the workspace. Returns team IDs, names, and keys. Use to resolve team IDs when creating issues.',
-        inputSchema: {},
-      },
-      async () => {
-        try {
-          const teams = await getLinearTeams();
-          return { content: [{ type: 'text' as const, text: JSON.stringify(teams, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_users',
-      {
-        title: 'Linear: Get Users',
-        description: 'List all users in the workspace. Returns user IDs, names, and emails. Use to resolve assignee IDs.',
-        inputSchema: {},
-      },
-      async () => {
-        try {
-          const users = await getLinearUsers();
-          return { content: [{ type: 'text' as const, text: JSON.stringify(users, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_workflow_states',
-      {
-        title: 'Linear: Get Workflow States',
-        description: 'Get all workflow states for a team (e.g. Backlog, Todo, In Progress, Done, Cancelled). Use to see available statuses and resolve state IDs.',
-        inputSchema: {
-          teamId: z.string().describe('Team ID (get from linear_get_teams)'),
-        },
-      },
-      async ({ teamId }) => {
-        try {
-          const states = await getWorkflowStates(teamId);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(states, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_cycles',
-      {
-        title: 'Linear: Get Cycles',
-        description: 'Get the active cycle (sprint) and recent cycles for a team. Shows cycle name, dates, and issue counts.',
-        inputSchema: {
-          teamId: z.string().describe('Team ID (get from linear_get_teams)'),
-        },
-      },
-      async ({ teamId }) => {
-        try {
-          const cycles = await getCycles(teamId);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(cycles, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_viewer',
-      {
-        title: 'Linear: Get Current User',
-        description: 'Get the authenticated user (you). Returns your user ID, name, and email.',
-        inputSchema: {},
-      },
-      async () => {
-        try {
-          const viewer = await getViewer();
-          return { content: [{ type: 'text' as const, text: JSON.stringify(viewer, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    // --- Write tools ---
-
-    server.registerTool(
-      'linear_start_issue',
-      {
-        title: 'Linear: Start Issue',
-        description: 'Claim a Linear issue and move it to In Progress. Assigns it to you and updates the status. Call this before starting work on a ticket.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
         },
       },
       async ({ issue }) => {
         try {
           const result = await startIssue(issue);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+          if (!result.success) return err(result.error ?? 'Failed to start issue');
+
+          // Get the full issue to return branchName
+          const detail = await getIssue(issue);
+          return json({
+            ...result,
+            branchName: detail.branchName,
+            hint: `Run: git checkout -b ${detail.branchName}`,
+          });
+        } catch (e: any) {
+          return err(e.message);
         }
       },
     );
 
     server.registerTool(
-      'linear_complete_issue',
+      'complete_issue',
       {
-        title: 'Linear: Complete Issue',
-        description: 'Mark a Linear issue as Done. Call this when the work is complete, tests pass, and the branch is merged.',
+        title: 'Complete Issue',
+        description: 'Mark a Linear issue as Done. Call when work is complete, tests pass, and branch is merged.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
         },
       },
-      async ({ issue }) => {
-        try {
-          const result = await completeIssue(issue);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ issue }) => tryLinear(() => completeIssue(issue)),
     );
 
     server.registerTool(
-      'linear_update_status',
+      'log_progress',
       {
-        title: 'Linear: Update Status',
-        description: 'Move a Linear issue to a specific status type. Use when the standard start/complete flow does not apply.',
+        title: 'Log Progress',
+        description: 'Add a comment to a Linear issue. Use at meaningful milestones, not every commit. Supports markdown.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          status: z.string().describe('Target status type: "unstarted", "started", "completed", or "cancelled"'),
+          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
+          body: z.string().describe('What was accomplished (markdown)'),
         },
       },
-      async ({ issue, status }) => {
-        try {
-          const result = await updateIssueStatus(issue, status);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
+      ({ issue, body }) => tryLinear(() => commentOnIssue(issue, body)),
+    );
+
+    server.registerTool(
+      'search_issues',
+      {
+        title: 'Search Issues',
+        description: 'Search Linear issues by text. Check if a ticket already exists before creating one.',
+        inputSchema: {
+          query: z.string().describe('Search text'),
+          limit: z.number().optional().describe('Max results (default: 20)'),
+        },
+      },
+      ({ query, limit }) => tryLinear(() => searchIssues(query, limit ?? 20)),
+    );
+
+    server.registerTool(
+      'get_issue',
+      {
+        title: 'Get Issue',
+        description: 'Full details on a specific issue: description, comments, sub-issues, labels, team.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
+        },
+      },
+      ({ issue }) => tryLinear(() => getIssue(issue)),
+    );
+
+    server.registerTool(
+      'create_issue',
+      {
+        title: 'Create Issue',
+        description: 'Create a new Linear issue. Use when you discover a bug, needed refactor, or follow-up work.',
+        inputSchema: {
+          title: z.string().describe('Issue title'),
+          teamId: z.string().describe('Team ID (get from get_teams)'),
+          description: z.string().optional().describe('Description (markdown)'),
+          priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
+          assigneeId: z.string().optional().describe('User ID to assign'),
+        },
+      },
+      ({ title, teamId, description, priority, assigneeId }) => {
+        const fields: Record<string, unknown> = { title, teamId };
+        if (description !== undefined) fields.description = description;
+        if (priority !== undefined) fields.priority = priority;
+        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
+        return tryLinear(() => createIssue(fields as any));
       },
     );
 
     server.registerTool(
-      'linear_update_issue',
+      'create_sub_issue',
       {
-        title: 'Linear: Update Issue',
-        description: 'Update fields on a Linear issue: title, description, priority, assignee, due date, estimate. Use for any modifications beyond status changes.',
+        title: 'Create Sub-Issue',
+        description: 'Create a child issue under a parent. Inherits the parent team.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
+          parent: z.string().describe('Parent issue identifier (e.g. "ENG-123")'),
+          title: z.string().describe('Sub-issue title'),
+          description: z.string().optional().describe('Description (markdown)'),
+          priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
+        },
+      },
+      ({ parent, title, description, priority }) => {
+        const fields: Record<string, unknown> = { title };
+        if (description !== undefined) fields.description = description;
+        if (priority !== undefined) fields.priority = priority;
+        return tryLinear(() => createSubIssue(parent, fields as any));
+      },
+    );
+
+    server.registerTool(
+      'update_issue',
+      {
+        title: 'Update Issue',
+        description: 'Update fields on a Linear issue: title, description, priority, assignee.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
           title: z.string().optional().describe('New title'),
-          description: z.string().optional().describe('New description (markdown)'),
-          priority: z.number().optional().describe('Priority: 0=none, 1=urgent, 2=high, 3=normal, 4=low'),
-          assigneeId: z.string().optional().describe('User ID to assign to (get from linear_get_users)'),
-          stateId: z.string().optional().describe('Workflow state ID (get from linear_get_workflow_states)'),
-          dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
-          estimate: z.number().optional().describe('Estimate points'),
+          description: z.string().optional().describe('New description'),
+          priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
+          assigneeId: z.string().optional().describe('User ID'),
         },
       },
-      async ({ issue, title, description, priority, assigneeId, stateId, dueDate, estimate }) => {
+      ({ issue, title, description, priority, assigneeId }) => {
         const fields: Record<string, unknown> = {};
         if (title !== undefined) fields.title = title;
         if (description !== undefined) fields.description = description;
         if (priority !== undefined) fields.priority = priority;
         if (assigneeId !== undefined) fields.assigneeId = assigneeId;
-        if (stateId !== undefined) fields.stateId = stateId;
-        if (dueDate !== undefined) fields.dueDate = dueDate;
-        if (estimate !== undefined) fields.estimate = estimate;
-
-        try {
-          const result = await updateIssue(issue, fields);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
+        return tryLinear(() => updateIssue(issue, fields));
       },
     );
 
     server.registerTool(
-      'linear_create_issue',
+      'archive_issue',
       {
-        title: 'Linear: Create Issue',
-        description: 'Create a new Linear issue. Use when you discover a bug, needed refactor, or follow-up work while coding. Requires a team ID (get from linear_get_teams).',
+        title: 'Archive Issue',
+        description: 'Archive an issue that is no longer relevant.',
         inputSchema: {
-          title: z.string().describe('Issue title'),
-          teamId: z.string().describe('Team ID (get from linear_get_teams)'),
-          description: z.string().optional().describe('Issue description (markdown)'),
-          priority: z.number().optional().describe('Priority: 0=none, 1=urgent, 2=high, 3=normal, 4=low'),
-          assigneeId: z.string().optional().describe('User ID to assign (get from linear_get_users)'),
-          stateId: z.string().optional().describe('Initial state ID (get from linear_get_workflow_states)'),
-          dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
-          estimate: z.number().optional().describe('Estimate points'),
+          issue: z.string().describe('Issue identifier'),
         },
       },
-      async ({ title, teamId, description, priority, assigneeId, stateId, dueDate, estimate }) => {
-        const fields: Record<string, unknown> = { title, teamId };
-        if (description !== undefined) fields.description = description;
-        if (priority !== undefined) fields.priority = priority;
-        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
-        if (stateId !== undefined) fields.stateId = stateId;
-        if (dueDate !== undefined) fields.dueDate = dueDate;
-        if (estimate !== undefined) fields.estimate = estimate;
-
-        try {
-          const result = await createIssue(fields as any);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ issue }) => tryLinear(() => archiveIssue(issue)),
     );
 
     server.registerTool(
-      'linear_create_sub_issue',
+      'create_issue_relation',
       {
-        title: 'Linear: Create Sub-Issue',
-        description: 'Create a sub-issue under a parent issue. Use to break a large ticket into smaller pieces. Inherits the parent team automatically.',
+        title: 'Create Issue Relation',
+        description: 'Link two issues (blocks, blocked_by, related, duplicate).',
         inputSchema: {
-          parent: z.string().describe('Parent issue identifier (e.g. "ENG-42")'),
-          title: z.string().describe('Sub-issue title'),
-          description: z.string().optional().describe('Sub-issue description (markdown)'),
-          priority: z.number().optional().describe('Priority: 0=none, 1=urgent, 2=high, 3=normal, 4=low'),
-          assigneeId: z.string().optional().describe('User ID to assign (get from linear_get_users)'),
+          issue: z.string().describe('Issue identifier'),
+          relatedIssue: z.string().describe('Related issue identifier'),
+          type: z.string().describe('"blocks", "blocked_by", "related", "duplicate"'),
         },
       },
-      async ({ parent, title, description, priority, assigneeId }) => {
-        const fields: Record<string, unknown> = { title };
-        if (description !== undefined) fields.description = description;
-        if (priority !== undefined) fields.priority = priority;
-        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
-
-        try {
-          const result = await createSubIssue(parent, fields as any);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ issue, relatedIssue, type }) =>
+        tryLinear(() => createIssueRelation(issue, relatedIssue, type)),
     );
 
     server.registerTool(
-      'linear_comment',
+      'get_issue_relations',
       {
-        title: 'Linear: Comment',
-        description: 'Add a comment to a Linear issue. Use to log progress, note blockers, or summarize what was done. Supports markdown.',
+        title: 'Get Issue Relations',
+        description: 'See what blocks or is related to an issue.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          body: z.string().describe('Comment body (markdown supported)'),
+          issue: z.string().describe('Issue identifier'),
         },
       },
-      async ({ issue, body }) => {
+      ({ issue }) => tryLinear(() => getIssueRelations(issue)),
+    );
+
+    // =========================================================================
+    // Linear — Projects
+    // =========================================================================
+
+    server.registerTool(
+      'project_status',
+      {
+        title: 'Project Status',
+        description: 'Get all projects with progress, health, and latest status update. One call for the full project picture.',
+        inputSchema: {},
+      },
+      async () => {
         try {
-          const result = await commentOnIssue(issue, body);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
+          const projects = await getProjects();
+          const enriched = await Promise.all(
+            projects.map(async (p) => {
+              try {
+                const updates = await getProjectUpdates(p.id, 1);
+                return { ...p, latestUpdate: updates[0] ?? null };
+              } catch {
+                return { ...p, latestUpdate: null };
+              }
+            }),
+          );
+          return json(enriched);
+        } catch (e: any) {
+          return err(e.message);
         }
       },
     );
 
-    // --- Project tools ---
-
     server.registerTool(
-      'linear_get_projects',
+      'get_project_issues',
       {
-        title: 'Linear: Get Projects',
-        description: 'List projects in the workspace. Shows name, state, progress, lead, and target date. Projects group related issues into a larger initiative.',
+        title: 'Get Project Issues',
+        description: 'List all issues in a project to see overall progress.',
         inputSchema: {
-          limit: z.number().optional().describe('Max results (default: 25)'),
+          projectId: z.string().describe('Project ID (from project_status)'),
         },
       },
-      async ({ limit }) => {
-        try {
-          const projects = await getProjects(limit ?? 25);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(projects, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ projectId }) => tryLinear(() => getProjectIssues(projectId)),
     );
 
     server.registerTool(
-      'linear_get_project_issues',
+      'update_project_status',
       {
-        title: 'Linear: Get Project Issues',
-        description: 'Get all issues in a project. Use to see overall progress and what remains.',
+        title: 'Update Project Status',
+        description: 'Post a status update on a project with a health indicator.',
         inputSchema: {
-          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
-          limit: z.number().optional().describe('Max results (default: 50)'),
+          projectId: z.string().describe('Project ID'),
+          body: z.string().describe('Status update (markdown)'),
+          health: z.string().optional().describe('"onTrack", "atRisk", or "offTrack" (default: onTrack)'),
         },
       },
-      async ({ projectId, limit }) => {
-        try {
-          const issues = await getProjectIssues(projectId, limit ?? 50);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(issues, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ projectId, body, health }) =>
+        tryLinear(() => createProjectUpdate(projectId, body, health ?? 'onTrack')),
     );
 
     server.registerTool(
-      'linear_create_project',
+      'update_project',
       {
-        title: 'Linear: Create Project',
-        description: 'Create a new project to group related issues. Projects have a state (planned, started, paused, completed, canceled) and optional target date.',
+        title: 'Update Project',
+        description: 'Change a project\'s name, description, state, or target date.',
         inputSchema: {
-          name: z.string().describe('Project name'),
-          teamIds: z.array(z.string()).describe('Team IDs to associate (get from linear_get_teams)'),
-          description: z.string().optional().describe('Project description'),
-          state: z.string().optional().describe('Initial state: "planned", "started", "paused", "completed", "canceled"'),
-          targetDate: z.string().optional().describe('Target completion date (YYYY-MM-DD)'),
-        },
-      },
-      async ({ name, teamIds, description, state, targetDate }) => {
-        const fields: Record<string, unknown> = { name, teamIds };
-        if (description !== undefined) fields.description = description;
-        if (state !== undefined) fields.state = state;
-        if (targetDate !== undefined) fields.targetDate = targetDate;
-        try {
-          const result = await createProject(fields as any);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_update_project',
-      {
-        title: 'Linear: Update Project',
-        description: 'Update a project\'s name, description, state, or target date.',
-        inputSchema: {
-          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+          projectId: z.string().describe('Project ID'),
           name: z.string().optional().describe('New name'),
           description: z.string().optional().describe('New description'),
           state: z.string().optional().describe('"planned", "started", "paused", "completed", "canceled"'),
           targetDate: z.string().optional().describe('Target date (YYYY-MM-DD)'),
         },
       },
-      async ({ projectId, name, description, state, targetDate }) => {
+      ({ projectId, name, description, state, targetDate }) => {
         const fields: Record<string, unknown> = {};
         if (name !== undefined) fields.name = name;
         if (description !== undefined) fields.description = description;
         if (state !== undefined) fields.state = state;
         if (targetDate !== undefined) fields.targetDate = targetDate;
-        try {
-          const result = await updateProject(projectId, fields as any);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
+        return tryLinear(() => updateProject(projectId, fields as any));
       },
     );
 
     server.registerTool(
-      'linear_add_issue_to_project',
+      'add_issue_to_project',
       {
-        title: 'Linear: Add Issue to Project',
+        title: 'Add Issue to Project',
         description: 'Add an existing issue to a project.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
+          issue: z.string().describe('Issue identifier'),
+          projectId: z.string().describe('Project ID'),
         },
       },
-      async ({ issue, projectId }) => {
-        try {
-          const result = await addIssueToProject(issue, projectId);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ issue, projectId }) => tryLinear(() => addIssueToProject(issue, projectId)),
     );
 
-    // --- Project Updates ---
+    // =========================================================================
+    // Linear — Labels
+    // =========================================================================
 
     server.registerTool(
-      'linear_get_project_updates',
+      'get_labels',
       {
-        title: 'Linear: Get Project Updates',
-        description: 'Get status updates for a project. Shows health (onTrack, atRisk, offTrack), body, author, and date. Use to understand project health before starting work.',
-        inputSchema: {
-          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
-          limit: z.number().optional().describe('Max results (default: 10)'),
-        },
-      },
-      async ({ projectId, limit }) => {
-        try {
-          const updates = await getProjectUpdates(projectId, limit ?? 10);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(updates, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_create_project_update',
-      {
-        title: 'Linear: Create Project Update',
-        description: 'Post a status update on a project with a health indicator. Use after completing significant milestones.',
-        inputSchema: {
-          projectId: z.string().describe('Project ID (get from linear_get_projects)'),
-          body: z.string().describe('Update body (markdown)'),
-          health: z.string().optional().describe('"onTrack", "atRisk", or "offTrack" (default: "onTrack")'),
-        },
-      },
-      async ({ projectId, body, health }) => {
-        try {
-          const result = await createProjectUpdate(projectId, body, health ?? 'onTrack');
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    // --- Issue extras ---
-
-    server.registerTool(
-      'linear_add_issue_to_cycle',
-      {
-        title: 'Linear: Add Issue to Cycle',
-        description: 'Add an issue to a sprint cycle.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          cycleId: z.string().describe('Cycle ID (get from linear_get_cycles)'),
-        },
-      },
-      async ({ issue, cycleId }) => {
-        try {
-          const result = await addIssueToCycle(issue, cycleId);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_archive_issue',
-      {
-        title: 'Linear: Archive Issue',
-        description: 'Archive an issue. Use for issues that are no longer relevant.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-        },
-      },
-      async ({ issue }) => {
-        try {
-          const result = await archiveIssue(issue);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_create_issue_relation',
-      {
-        title: 'Linear: Create Issue Relation',
-        description: 'Create a relation between two issues (blocks, blocked by, related, duplicate).',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          relatedIssue: z.string().describe('Related issue identifier (e.g. "ENG-43")'),
-          type: z.string().describe('Relation type: "blocks", "blocked_by", "related", "duplicate", "duplicate_of"'),
-        },
-      },
-      async ({ issue, relatedIssue, type }) => {
-        try {
-          const result = await createIssueRelation(issue, relatedIssue, type);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_issue_relations',
-      {
-        title: 'Linear: Get Issue Relations',
-        description: 'Get all relations for an issue (blocks, blocked by, related, duplicates). Use to understand dependencies.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-        },
-      },
-      async ({ issue }) => {
-        try {
-          const relations = await getIssueRelations(issue);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(relations, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_issue_history',
-      {
-        title: 'Linear: Get Issue History',
-        description: 'Get the change history for an issue — status transitions, who changed what, when.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          limit: z.number().optional().describe('Max entries (default: 20)'),
-        },
-      },
-      async ({ issue, limit }) => {
-        try {
-          const history = await getIssueHistory(issue, limit ?? 20);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(history, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
-    );
-
-    server.registerTool(
-      'linear_get_labels',
-      {
-        title: 'Linear: Get Labels',
-        description: 'List all issue labels in the workspace. Returns label IDs, names, and colors.',
+        title: 'Get Labels',
+        description: 'List all issue labels in the workspace.',
         inputSchema: {},
       },
-      async () => {
-        try {
-          const labels = await getLabels();
-          return { content: [{ type: 'text' as const, text: JSON.stringify(labels, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      () => tryLinear(() => getLabels()),
     );
 
     server.registerTool(
-      'linear_add_issue_label',
+      'add_label',
       {
-        title: 'Linear: Add Label to Issue',
-        description: 'Add a label to an issue. Preserves existing labels.',
+        title: 'Add Label',
+        description: 'Add a label to an issue.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          labelId: z.string().describe('Label ID (get from linear_get_labels)'),
+          issue: z.string().describe('Issue identifier'),
+          labelId: z.string().describe('Label ID (from get_labels)'),
         },
       },
-      async ({ issue, labelId }) => {
-        try {
-          const result = await addIssueLabel(issue, labelId);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
-      },
+      ({ issue, labelId }) => tryLinear(() => addIssueLabel(issue, labelId)),
     );
 
     server.registerTool(
-      'linear_remove_issue_label',
+      'remove_label',
       {
-        title: 'Linear: Remove Label from Issue',
+        title: 'Remove Label',
         description: 'Remove a label from an issue.',
         inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-42")'),
-          labelId: z.string().describe('Label ID (get from linear_get_labels)'),
+          issue: z.string().describe('Issue identifier'),
+          labelId: z.string().describe('Label ID'),
         },
       },
-      async ({ issue, labelId }) => {
-        try {
-          const result = await removeIssueLabel(issue, labelId);
-          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: err.message }, null, 2) }], isError: true };
-        }
+      ({ issue, labelId }) => tryLinear(() => removeIssueLabel(issue, labelId)),
+    );
+
+    // =========================================================================
+    // Linear — Workspace Reference
+    // =========================================================================
+
+    server.registerTool(
+      'get_teams',
+      {
+        title: 'Get Teams',
+        description: 'List teams. Needed to resolve team IDs for create_issue.',
+        inputSchema: {},
       },
+      () => tryLinear(() => getLinearTeams()),
+    );
+
+    server.registerTool(
+      'get_users',
+      {
+        title: 'Get Users',
+        description: 'List users. Needed to resolve user IDs for assignments.',
+        inputSchema: {},
+      },
+      () => tryLinear(() => getLinearUsers()),
+    );
+
+    server.registerTool(
+      'get_viewer',
+      {
+        title: 'Get Current User',
+        description: 'Get the authenticated user (you). Your ID, name, and email.',
+        inputSchema: {},
+      },
+      () => tryLinear(() => getViewer()),
     );
   }
 
