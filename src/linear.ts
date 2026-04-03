@@ -348,9 +348,9 @@ export async function getLinearData(): Promise<LinearData | null> {
   const client = getClient();
   const teamKey = process.env.SWARMCODE_LINEAR_TEAM || null;
 
-  // Build filter for active issues
+  // Build filter for all open issues (exclude completed/cancelled)
   const filter: Record<string, unknown> = {
-    state: { type: { in: ['started', 'unstarted'] } },
+    state: { type: { in: ['triage', 'backlog', 'unstarted', 'started'] } },
   };
   if (teamKey) {
     filter.team = { key: { eq: teamKey } };

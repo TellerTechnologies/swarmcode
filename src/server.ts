@@ -237,7 +237,7 @@ export function createServer(): McpServer {
       'linear_get_issues',
       {
         title: 'Get Issues',
-        description: 'Active issues from Linear (In Progress + Todo). Shows identifier, title, assignee, status, priority, and suggested branch name.',
+        description: 'Open issues from Linear (Triage, Backlog, Todo, In Progress). Shows identifier, title, assignee, status, priority, and suggested branch name.',
         inputSchema: {},
       },
       () => tryLinear(() => getLinearData()),
