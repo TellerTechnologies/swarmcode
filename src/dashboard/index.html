@@ -614,6 +614,16 @@
     color: var(--text-muted);
   }
 
+  .linear-status.backlog {
+    background: rgba(139, 148, 158, 0.08);
+    color: var(--text-muted);
+  }
+
+  .linear-status.triage {
+    background: rgba(210, 153, 34, 0.12);
+    color: #d2991f;
+  }
+
   .linear-priority {
     font-size: 11px;
     flex-shrink: 0;
@@ -917,6 +927,8 @@ function renderLinear(data) {
 
   const inProgress = data.issues.filter(i => i.statusType === 'started');
   const todo = data.issues.filter(i => i.statusType === 'unstarted');
+  const backlog = data.issues.filter(i => i.statusType === 'backlog');
+  const triage = data.issues.filter(i => i.statusType === 'triage');
 
   let html = '';
 
@@ -928,6 +940,16 @@ function renderLinear(data) {
   if (todo.length > 0) {
     html += '<div class="linear-section-title">Todo</div>';
     html += todo.map(renderLinearIssue).join('');
+  }
+
+  if (backlog.length > 0) {
+    html += '<div class="linear-section-title">Backlog</div>';
+    html += backlog.map(renderLinearIssue).join('');
+  }
+
+  if (triage.length > 0) {
+    html += '<div class="linear-section-title">Triage</div>';
+    html += triage.map(renderLinearIssue).join('');
   }
 
   el.innerHTML = html;
