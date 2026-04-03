@@ -296,6 +296,40 @@ export function getBranchLog(branch: string, since: string): GitCommit[] {
   return commits;
 }
 
+/** Get remote branches that are fully merged into a base branch. */
+export function getMergedRemoteBranches(base?: string): string[] {
+  const mainBranch = base ?? getMainBranch();
+  const output = run(['branch', '-r', '--merged', mainBranch]);
+  if (!output) return [];
+  return output
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.includes('->'))
+    .filter((l) => {
+      // Exclude the main branch itself
+      const short = l.replace(/^origin\//, '');
+      const mainShort = mainBranch.replace(/^origin\//, '');
+      return short !== mainShort;
+    });
+}
+
+/** Get the timestamp of the most recent commit on a branch. */
+export function getBranchLastCommitTime(branch: string): number {
+  const result = runOrNull(['log', '-1', '--format=%at', branch]);
+  if (!result) return 0;
+  return parseInt(result, 10) || 0;
+}
+
+/** Get recent commit messages on the current branch since a given SHA. */
+export function getCommitMessagesSince(sinceSha: string): Array<{ hash: string; message: string }> {
+  const output = run(['log', `${sinceSha}..HEAD`, '--format=%H|%s']);
+  if (!output) return [];
+  return output.split('\n').filter(l => l.length > 0).map(l => {
+    const idx = l.indexOf('|');
+    return { hash: l.slice(0, idx), message: l.slice(idx + 1) };
+  });
+}
+
 export function push(branch: string, setUpstream: boolean): PushResult {
   try {
     const args = setUpstream

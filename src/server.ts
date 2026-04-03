@@ -10,6 +10,7 @@ import { getDeveloper } from './tools/get-developer.js';
 import { enableAutoPush, disableAutoPush } from './tools/auto-push.js';
 import { getProjectContext } from './tools/get-project-context.js';
 import { checkAll } from './tools/check-all.js';
+import { runSessionLinearChecks, autoProjectHealth } from './auto-linear.js';
 import {
   isConfigured as linearConfigured,
   getLinearData,
@@ -99,16 +100,42 @@ export function createServer(): McpServer {
     'start_session',
     {
       title: 'Start Session',
-      description: 'Everything you need at session start in one call: team activity, project context, conflict check, and auto-push enabled. Call this first.',
+      description: 'Everything you need at session start in one call: team activity, project context, conflict check, auto-push, and Linear automation (auto-complete merged issues, branch validation, stale detection, project health). Call this first.',
       inputSchema: {
         since: z.string().default('24h').describe('How far back to look for team activity'),
       },
     },
-    ({ since }) => {
+    async ({ since }) => {
       try {
         const data = checkAll({ since });
         enableAutoPush({ interval: 30 });
-        return json({ ...data, auto_push: 'enabled' });
+
+        const result: Record<string, unknown> = {
+          ...data,
+          auto_push: 'enabled',
+        };
+
+        // Run Linear automations if configured
+        if (hasLinear) {
+          try {
+            const [linearContext, projectActions] = await Promise.all([
+              runSessionLinearChecks(),
+              autoProjectHealth(),
+            ]);
+
+            result.linear = {
+              auto_completed: linearContext.auto_completed,
+              branch_warnings: linearContext.branch_warnings,
+              stale_issues: linearContext.stale_issues,
+              project_actions: projectActions,
+            };
+          } catch {
+            // Linear checks are best-effort
+            result.linear = { error: 'Linear checks failed — continuing without them' };
+          }
+        }
+
+        return json(result);
       } catch (e: any) {
         return err(e.message);
       }

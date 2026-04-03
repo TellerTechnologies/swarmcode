@@ -1,5 +1,6 @@
 import type { AutoPushResult, AutoPushDisableResult } from '../types.js';
 import * as git from '../git.js';
+import { autoProgress } from '../auto-linear.js';
 
 const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
 
@@ -17,12 +18,21 @@ function tick(): void {
   const sha = git.getHeadSha();
   if (!sha || sha === lastSha) return;
 
+  const previousSha = lastSha;
+
   // HEAD moved — push
   const hasUpstream = git.getUpstreamBranch() !== null;
   const result = git.push(branch, !hasUpstream);
 
   if (result.ok) {
     pushCount++;
+
+    // Auto-progress: post batched commit summaries to Linear
+    if (previousSha) {
+      autoProgress(previousSha).catch(() => {
+        // Best-effort — don't block the push loop
+      });
+    }
   } else {
     console.error(`[swarmcode auto-push] push failed: ${result.error}`);
   }
