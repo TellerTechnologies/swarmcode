@@ -154,14 +154,17 @@ function getClient(): LinearClient {
 
 /**
  * Look up an issue by its human-readable identifier (e.g. "ENG-42").
- * Uses issueSearch and returns the SDK Issue object.
+ * Uses searchIssues and returns the SDK Issue object.
  */
 async function lookupIssue(identifier: string) {
   const client = getClient();
-  const results = await client.issueSearch({ query: identifier, first: 1 });
+  const results = await client.searchIssues(identifier, { first: 1 });
   const node = results.nodes[0];
   if (!node) throw new Error(`Issue "${identifier}" not found in Linear`);
-  return node;
+  // Re-fetch via client.issue() to get the full Issue object with relational
+  // methods (comments, children, relations, history, labels, etc.) that
+  // IssueSearchResult does not expose.
+  return client.issue(node.id);
 }
 
 /**
@@ -385,8 +388,10 @@ export async function getLinearData(): Promise<LinearData | null> {
 /** Search issues by text query. */
 export async function searchIssues(query: string, limit: number = 20): Promise<LinearIssue[]> {
   const client = getClient();
-  const results = await client.issueSearch({ query, first: limit });
-  return Promise.all(results.nodes.map(toLinearIssue));
+  const results = await client.searchIssues(query, { first: limit });
+  // Re-fetch full Issue objects since IssueSearchResult lacks relational methods
+  const fullIssues = await Promise.all(results.nodes.map(n => client.issue(n.id)));
+  return Promise.all(fullIssues.map(toLinearIssue));
 }
 
 /** Get full details on a specific issue by identifier. */
