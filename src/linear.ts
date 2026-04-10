@@ -246,11 +246,13 @@ async function toLinearIssueDetail(issue: Awaited<ReturnType<typeof lookupIssue>
  * Find a workflow state ID by type (e.g. "started", "completed") from a list of states.
  */
 function findStateId(
-  states: Array<{ id: string; type: string }>,
+  states: Array<{ id: string; type: string; position?: number }>,
   targetType: string,
 ): string | null {
-  const state = states.find(s => s.type === targetType);
-  return state?.id ?? null;
+  const matching = states.filter(s => s.type === targetType);
+  if (matching.length === 0) return null;
+  matching.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  return matching[0].id;
 }
 
 /**
@@ -414,7 +416,7 @@ export async function startIssue(identifier: string): Promise<LinearWriteResult>
     const team = await issue.team;
     if (!team) return { success: false, issue: null, error: 'Could not resolve team for issue' };
     const statesConn = await team.states();
-    const states = statesConn.nodes.map(s => ({ id: s.id, type: s.type }));
+    const states = statesConn.nodes.map(s => ({ id: s.id, type: s.type, position: s.position }));
 
     const startedStateId = findStateId(states, 'started');
     const input: Record<string, string> = { assigneeId: viewer.id };
@@ -436,7 +438,7 @@ export async function completeIssue(identifier: string): Promise<LinearWriteResu
     const team = await issue.team;
     if (!team) return { success: false, issue: null, error: 'Could not resolve team for issue' };
     const statesConn = await team.states();
-    const states = statesConn.nodes.map(s => ({ id: s.id, type: s.type }));
+    const states = statesConn.nodes.map(s => ({ id: s.id, type: s.type, position: s.position }));
 
     const completedStateId = findStateId(states, 'completed');
     if (!completedStateId) {
@@ -459,7 +461,7 @@ export async function updateIssueStatus(identifier: string, statusType: string):
     const team = await issue.team;
     if (!team) return { success: false, issue: null, error: 'Could not resolve team for issue' };
     const statesConn = await team.states();
-    const states = statesConn.nodes.map(s => ({ id: s.id, name: s.name, type: s.type }));
+    const states = statesConn.nodes.map(s => ({ id: s.id, name: s.name, type: s.type, position: s.position }));
 
     const stateId = findStateId(states, statusType);
     if (!stateId) {
