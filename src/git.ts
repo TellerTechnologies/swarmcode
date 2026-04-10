@@ -330,6 +330,19 @@ export function getCommitMessagesSince(sinceSha: string): Array<{ hash: string; 
   });
 }
 
+/** Check if the current branch has an open PR on GitHub. */
+export function hasOpenPR(): boolean {
+  try {
+    const result = execFileSync('gh', ['pr', 'view', '--json', 'state', '--jq', '.state'], {
+      ...EXEC_OPTS,
+      timeout: 10_000,
+    }) as string;
+    return result.trim() === 'OPEN';
+  } catch {
+    return false;
+  }
+}
+
 export function push(branch: string, setUpstream: boolean): PushResult {
   try {
     const args = setUpstream

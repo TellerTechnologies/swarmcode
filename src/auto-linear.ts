@@ -13,6 +13,7 @@ import {
   isConfigured,
   getLinearData,
   completeIssue,
+  reviewIssue,
   commentOnIssue,
   getProjects,
   getProjectIssues,
@@ -213,7 +214,51 @@ export async function runSessionLinearChecks(): Promise<SessionLinearContext> {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Auto-progress: batch commits → Linear comments
+// 3. Auto-review: open PR → move issue to In Review
+// ---------------------------------------------------------------------------
+
+// Track which issues we've already moved to review this session
+const reviewedIssues = new Set<string>();
+
+/**
+ * Called after auto-push succeeds. If the current branch has an open PR,
+ * move the linked Linear issue to "In Review".
+ */
+export async function autoReview(): Promise<{ moved: string | null; error?: string }> {
+  if (!isConfigured()) return { moved: null };
+
+  const branch = git.getCurrentBranch();
+  if (!branch) return { moved: null };
+
+  const issueId = extractIssueId(branch);
+  if (!issueId) return { moved: null };
+
+  // Only move once per session per issue
+  if (reviewedIssues.has(issueId)) return { moved: null };
+
+  if (!git.hasOpenPR()) return { moved: null };
+
+  try {
+    const issue = await getIssue(issueId);
+    // Only move if currently "In Progress" (started), not already reviewed/done
+    if (issue.statusType !== 'started' || issue.status.toLowerCase().includes('review')) {
+      reviewedIssues.add(issueId);
+      return { moved: null };
+    }
+
+    const result = await reviewIssue(issueId);
+    if (result.success) {
+      reviewedIssues.add(issueId);
+      return { moved: issueId };
+    }
+    return { moved: null, error: result.error ?? 'Unknown error' };
+  } catch (e: any) {
+    return { moved: null, error: e.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Auto-progress: batch commits → Linear comments
 // ---------------------------------------------------------------------------
 
 // Track what we've already commented per issue to avoid duplicates
@@ -275,7 +320,7 @@ export async function autoProgress(previousSha: string): Promise<AutoProgressRes
 }
 
 // ---------------------------------------------------------------------------
-// 4. Project health auto-pilot
+// 5. Project health auto-pilot
 // ---------------------------------------------------------------------------
 
 /**

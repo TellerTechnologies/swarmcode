@@ -1,6 +1,6 @@
 import type { AutoPushResult, AutoPushDisableResult } from '../types.js';
 import * as git from '../git.js';
-import { autoProgress } from '../auto-linear.js';
+import { autoProgress, autoReview } from '../auto-linear.js';
 
 const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
 
@@ -33,6 +33,11 @@ function tick(): void {
         // Best-effort — don't block the push loop
       });
     }
+
+    // Auto-review: move issue to "In Review" if a PR is open
+    autoReview().catch(() => {
+      // Best-effort — don't block the push loop
+    });
   } else {
     console.error(`[swarmcode auto-push] push failed: ${result.error}`);
   }

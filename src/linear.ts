@@ -244,6 +244,7 @@ async function toLinearIssueDetail(issue: Awaited<ReturnType<typeof lookupIssue>
 
 /**
  * Find a workflow state ID by type (e.g. "started", "completed") from a list of states.
+ * Returns the state with the lowest position (earliest in the workflow).
  */
 function findStateId(
   states: Array<{ id: string; type: string; position?: number }>,
@@ -253,6 +254,18 @@ function findStateId(
   if (matching.length === 0) return null;
   matching.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   return matching[0].id;
+}
+
+/**
+ * Find a workflow state ID by name (case-insensitive substring match).
+ */
+function findStateIdByName(
+  states: Array<{ id: string; name: string }>,
+  targetName: string,
+): string | null {
+  const lower = targetName.toLowerCase();
+  const state = states.find(s => s.name.toLowerCase().includes(lower));
+  return state?.id ?? null;
 }
 
 /**
@@ -446,6 +459,29 @@ export async function completeIssue(identifier: string): Promise<LinearWriteResu
     }
 
     await client.updateIssue(issue.id, { stateId: completedStateId });
+    return buildWriteResult(issue.id);
+  } catch (err: unknown) {
+    return { success: false, issue: null, error: (err as Error).message };
+  }
+}
+
+/** Move an issue to "In Review" state. */
+export async function reviewIssue(identifier: string): Promise<LinearWriteResult> {
+  try {
+    const client = getClient();
+    const issue = await lookupIssue(identifier);
+
+    const team = await issue.team;
+    if (!team) return { success: false, issue: null, error: 'Could not resolve team for issue' };
+    const statesConn = await team.states();
+    const states = statesConn.nodes.map(s => ({ id: s.id, name: s.name, type: s.type, position: s.position }));
+
+    const reviewStateId = findStateIdByName(states, 'review');
+    if (!reviewStateId) {
+      return { success: false, issue: null, error: 'No "In Review" state found for this team' };
+    }
+
+    await client.updateIssue(issue.id, { stateId: reviewStateId });
     return buildWriteResult(issue.id);
   } catch (err: unknown) {
     return { success: false, issue: null, error: (err as Error).message };
