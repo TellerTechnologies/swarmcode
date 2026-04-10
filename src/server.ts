@@ -37,6 +37,7 @@ import {
   getLabels,
   addIssueLabel,
   removeIssueLabel,
+  getWorkflowStates,
 } from './linear.js';
 
 function json(data: unknown) {
@@ -368,21 +369,27 @@ export function createServer(): McpServer {
       'update_issue',
       {
         title: 'Update Issue',
-        description: 'Update fields on a Linear issue: title, description, priority, assignee.',
+        description: 'Update fields on a Linear issue: title, description, priority, assignee, status, due date, estimate. Use get_workflow_states to find valid stateId values.',
         inputSchema: {
           issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
           title: z.string().optional().describe('New title'),
           description: z.string().optional().describe('New description'),
           priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
           assigneeId: z.string().optional().describe('User ID'),
+          stateId: z.string().optional().describe('Workflow state ID (from get_workflow_states)'),
+          dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
+          estimate: z.number().optional().describe('Point estimate'),
         },
       },
-      ({ issue, title, description, priority, assigneeId }) => {
+      ({ issue, title, description, priority, assigneeId, stateId, dueDate, estimate }) => {
         const fields: Record<string, unknown> = {};
         if (title !== undefined) fields.title = title;
         if (description !== undefined) fields.description = description;
         if (priority !== undefined) fields.priority = priority;
         if (assigneeId !== undefined) fields.assigneeId = assigneeId;
+        if (stateId !== undefined) fields.stateId = stateId;
+        if (dueDate !== undefined) fields.dueDate = dueDate;
+        if (estimate !== undefined) fields.estimate = estimate;
         return tryLinear(() => updateIssue(issue, fields));
       },
     );
@@ -565,10 +572,22 @@ export function createServer(): McpServer {
     // =========================================================================
 
     server.registerTool(
+      'get_workflow_states',
+      {
+        title: 'Get Workflow States',
+        description: 'List workflow states for a team (e.g. Backlog, Todo, In Progress, In Review, Done). Use to find stateId values for update_issue.',
+        inputSchema: {
+          teamId: z.string().describe('Team ID (from get_teams)'),
+        },
+      },
+      ({ teamId }) => tryLinear(() => getWorkflowStates(teamId)),
+    );
+
+    server.registerTool(
       'get_teams',
       {
         title: 'Get Teams',
-        description: 'List teams. Needed to resolve team IDs for create_issue.',
+        description: 'List teams. Needed to resolve team IDs for create_issue and get_workflow_states.',
         inputSchema: {},
       },
       () => tryLinear(() => getLinearTeams()),
