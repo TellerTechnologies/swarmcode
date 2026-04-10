@@ -38,6 +38,7 @@ import {
   addIssueLabel,
   removeIssueLabel,
   getWorkflowStates,
+  checkIssueItem,
 } from './linear.js';
 
 function json(data: unknown) {
@@ -404,6 +405,19 @@ export function createServer(): McpServer {
         },
       },
       ({ issue }) => tryLinear(() => archiveIssue(issue)),
+    );
+
+    server.registerTool(
+      'check_item',
+      {
+        title: 'Check Item',
+        description: 'Check off a checkbox item in an issue description. Matches by substring. Returns which item was checked and how many remain.',
+        inputSchema: {
+          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
+          item: z.string().describe('Text to match against unchecked items (substring, case-insensitive)'),
+        },
+      },
+      ({ issue, item }) => tryLinear(() => checkIssueItem(issue, item)),
     );
 
     server.registerTool(

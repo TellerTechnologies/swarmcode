@@ -536,6 +536,56 @@ export async function updateIssue(
   }
 }
 
+/** Check off a checkbox item in an issue's description. */
+export async function checkIssueItem(
+  identifier: string,
+  itemText: string,
+): Promise<{ success: boolean; checked: string | null; remaining: number; total: number; error?: string }> {
+  try {
+    const client = getClient();
+    const issue = await lookupIssue(identifier);
+    const description = issue.description ?? '';
+    if (!description) {
+      return { success: false, checked: null, remaining: 0, total: 0, error: 'Issue has no description' };
+    }
+
+    const lower = itemText.toLowerCase();
+    const lines = description.split('\n');
+    let matched = false;
+    let checkedText: string | null = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Match unchecked checkboxes: - [ ] text
+      if (/^(\s*)-\s*\[\s*\]/.test(line) && line.toLowerCase().includes(lower)) {
+        lines[i] = line.replace(/\[\s*\]/, '[x]');
+        checkedText = line.replace(/^\s*-\s*\[\s*\]\s*/, '').trim();
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      // Check if already checked
+      const alreadyChecked = lines.some(l => /^(\s*)-\s*\[x\]/i.test(l) && l.toLowerCase().includes(lower));
+      if (alreadyChecked) {
+        return { success: true, checked: null, remaining: 0, total: 0, error: `Item matching "${itemText}" is already checked` };
+      }
+      return { success: false, checked: null, remaining: 0, total: 0, error: `No unchecked item matching "${itemText}" found` };
+    }
+
+    const newDescription = lines.join('\n');
+    await client.updateIssue(issue.id, { description: newDescription });
+
+    const total = lines.filter(l => /^(\s*)-\s*\[[ x]\]/i.test(l)).length;
+    const remaining = lines.filter(l => /^(\s*)-\s*\[\s*\]/.test(l)).length;
+
+    return { success: true, checked: checkedText, remaining, total };
+  } catch (err: unknown) {
+    return { success: false, checked: null, remaining: 0, total: 0, error: (err as Error).message };
+  }
+}
+
 /** Create a new issue. */
 export async function createIssue(fields: {
   title: string;
