@@ -345,11 +345,11 @@ export async function getCycles(teamId: string): Promise<{ active: LinearCycle |
 }
 
 /** Fetch active issues (used by dashboard). */
-export async function getLinearData(): Promise<LinearData | null> {
+export async function getLinearData(overrideTeamKey?: string): Promise<LinearData | null> {
   if (!process.env.SWARMCODE_LINEAR_API_KEY) return null;
 
   const client = getClient();
-  const teamKey = process.env.SWARMCODE_LINEAR_TEAM || null;
+  const teamKey = overrideTeamKey ?? process.env.SWARMCODE_LINEAR_TEAM ?? null;
 
   // Build filter for all open issues (exclude completed/cancelled)
   const filter: Record<string, unknown> = {

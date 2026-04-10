@@ -238,9 +238,11 @@ export function createServer(): McpServer {
       {
         title: 'Get Issues',
         description: 'Open issues from Linear (Triage, Backlog, Todo, In Progress). Shows identifier, title, assignee, status, priority, and suggested branch name.',
-        inputSchema: {},
+        inputSchema: {
+          teamKey: z.string().optional().describe('Team key to filter by (e.g. "WIN", "TEL"). Omit to use SWARMCODE_LINEAR_TEAM env var, or fetch all teams if unset.'),
+        },
       },
-      () => tryLinear(() => getLinearData()),
+      ({ teamKey }) => tryLinear(() => getLinearData(teamKey)),
     );
 
     server.registerTool(
