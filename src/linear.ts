@@ -77,7 +77,7 @@ export interface LinearData {
 
 export interface LinearWriteResult {
   success: boolean;
-  issue: { id: string; identifier: string; title: string; status: string; assignee: string | null } | null;
+  issue: { id: string; identifier: string; title: string; status: string; assignee: string | null; url: string } | null;
   error?: string;
 }
 
@@ -284,6 +284,7 @@ async function buildWriteResult(issueId: string): Promise<LinearWriteResult> {
         title: updated.title,
         status: state?.name ?? 'unknown',
         assignee: assignee?.name ?? null,
+        url: updated.url ?? '',
       },
     };
   } catch {
@@ -566,6 +567,7 @@ export async function createIssue(fields: {
         title: created.title,
         status: state?.name ?? 'unknown',
         assignee: assignee?.name ?? null,
+        url: created.url ?? '',
       },
     };
   } catch (err: unknown) {
