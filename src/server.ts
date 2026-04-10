@@ -83,6 +83,7 @@ export function createServer(): McpServer {
     '',
     '## Progress & Completion',
     hasLinear ? '- After meaningful milestones (NOT every commit) → call log_progress to record what was accomplished' : '',
+    hasLinear ? '- When logging progress, include checkItems to check off completed subtasks in the issue description (e.g. checkItems: ["Add billing page", "Create backend"])' : '',
     hasLinear ? '- When work is complete and merged → call complete_issue to mark it Done' : '',
     hasLinear ? '- If you discover a bug or needed task → call create_issue to track it' : '',
     '',
@@ -290,13 +291,30 @@ export function createServer(): McpServer {
       'log_progress',
       {
         title: 'Log Progress',
-        description: 'Add a comment to a Linear issue. Use at meaningful milestones, not every commit. Supports markdown.',
+        description: 'Add a comment to a Linear issue and optionally check off completed items in the description. Use at meaningful milestones, not every commit. Supports markdown.',
         inputSchema: {
           issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
           body: z.string().describe('What was accomplished (markdown)'),
+          checkItems: z.array(z.string()).optional().describe('Substrings matching checkbox items in the issue description to mark as done'),
         },
       },
-      ({ issue, body }) => tryLinear(() => commentOnIssue(issue, body)),
+      async ({ issue, body, checkItems }) => {
+        try {
+          const commentResult = await commentOnIssue(issue, body);
+          const checked: string[] = [];
+          if (checkItems && checkItems.length > 0) {
+            for (const item of checkItems) {
+              const result = await checkIssueItem(issue, item);
+              if (result.success && result.checked) {
+                checked.push(result.checked);
+              }
+            }
+          }
+          return json({ ...commentResult, checkedItems: checked });
+        } catch (e: any) {
+          return err(e.message);
+        }
+      },
     );
 
     server.registerTool(
