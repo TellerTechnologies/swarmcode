@@ -81,10 +81,14 @@ export function createServer(): McpServer {
     '- Commit early and often — after each logical unit of work (new function, bug fix, test added)',
     '- Small, frequent commits are pushed automatically and let teammates see your progress in real-time',
     '',
-    '## Progress & Completion',
+    '## Progress & Checkbox Tracking',
     hasLinear ? '- After meaningful milestones (NOT every commit) → call log_progress to record what was accomplished' : '',
-    hasLinear ? '- When logging progress, include checkItems to check off completed subtasks in the issue description (e.g. checkItems: ["Add billing page", "Create backend"])' : '',
-    hasLinear ? '- When work is complete and merged → call complete_issue to mark it Done' : '',
+    hasLinear ? '- When logging progress, ALWAYS include checkItems to check off completed subtasks in the issue description (e.g. checkItems: ["Add billing page", "Create backend"])' : '',
+    hasLinear ? '- After completing a subtask listed in the issue description, call check_item to mark it done — do not wait until the end' : '',
+    hasLinear ? '- Read the issue description at the start of work to know what checkboxes exist — track them as you go' : '',
+    '',
+    '## Completion',
+    hasLinear ? '- When work is complete and merged → call complete_issue to mark it Done (this also checks off any remaining checkboxes)' : '',
     hasLinear ? '- If you discover a bug or needed task → call create_issue to track it' : '',
     '',
     hasLinear ? '- Do not work on issues that are already In Progress and assigned to someone else' : '',
@@ -279,12 +283,26 @@ export function createServer(): McpServer {
       'complete_issue',
       {
         title: 'Complete Issue',
-        description: 'Mark a Linear issue as Done. Call when work is complete, tests pass, and branch is merged.',
+        description: 'Mark a Linear issue as Done and check off all remaining checkboxes in the description. Call when work is complete, tests pass, and branch is merged.',
         inputSchema: {
           issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
         },
       },
-      ({ issue }) => tryLinear(() => completeIssue(issue)),
+      async ({ issue }) => {
+        try {
+          // Check off all remaining checkboxes before completing
+          const detail = await getIssue(issue);
+          const description = detail.description ?? '';
+          if (description.includes('- [ ]')) {
+            const checked = description.replace(/- \[ \]/g, '- [x]');
+            await updateIssue(issue, { description: checked });
+          }
+          const result = await completeIssue(issue);
+          return json(result);
+        } catch (e: any) {
+          return err(e.message);
+        }
+      },
     );
 
     server.registerTool(
