@@ -14,6 +14,23 @@ let lastFetchTimestamp = 0;
  * Ensures remote refs are fresh by running `git fetch --all --prune` if the
  * last fetch was more than `stalenessSeconds` ago. Safe to call frequently —
  * the throttle prevents hammering the remote.
+ *
+ * @param stalenessSeconds - How many seconds must have elapsed since the last
+ *   successful fetch before a new one is triggered. Defaults to
+ *   `DEFAULT_FETCH_STALENESS_SECS` (30s).
+ * @returns `true` if a fetch was performed and succeeded, `false` if the data
+ *   was still fresh (throttled) or if the fetch failed (network error, no
+ *   remote, etc.).
+ *
+ * @example
+ * ```ts
+ * // Call before reading remote refs — fetch only happens if data is stale
+ * ensureFresh();
+ * const branches = getActiveRemoteBranches();
+ *
+ * // Use a custom staleness threshold of 60 seconds
+ * ensureFresh(60);
+ * ```
  */
 export function ensureFresh(stalenessSeconds: number = DEFAULT_FETCH_STALENESS_SECS): boolean {
   const now = Date.now() / 1000;
@@ -229,6 +246,14 @@ export interface PushResult {
  * Detects the main/default branch by checking remote then local branches.
  * Prefers `origin/main` over `origin/master`, falls back to local `main` or
  * `master`, and returns `'HEAD'` if none are found.
+ *
+ * @returns The name of the main branch (e.g. `'origin/main'`, `'master'`, or `'HEAD'`).
+ *
+ * @example
+ * ```ts
+ * const main = getMainBranch(); // 'origin/main'
+ * const commits = getBranchLog('feature', '7 days ago'); // uses getMainBranch() internally
+ * ```
  */
 export function getMainBranch(): string {
   const remote = run(['branch', '-r']);
