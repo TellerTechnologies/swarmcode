@@ -44,6 +44,12 @@ export function ensureFresh(stalenessSeconds: number = DEFAULT_FETCH_STALENESS_S
 
 // Internal helpers
 
+/**
+ * Executes a git command with the given args and returns trimmed stdout.
+ * Returns an empty string `''` on any error (non-zero exit, missing binary, etc.).
+ * Use this when an empty result is a valid outcome — e.g. "no branches" or
+ * "no output" — and the caller does not need to distinguish failure from empty.
+ */
 function run(args: string[]): string {
   try {
     return (execFileSync('git', args, EXEC_OPTS) as string).trim();
@@ -62,6 +68,13 @@ function runRaw(args: string[]): string {
   }
 }
 
+/**
+ * Executes a git command with the given args and returns trimmed stdout, or
+ * `null` on any error. Unlike {@link run}, the `null` return lets callers
+ * distinguish "command failed / not in a repo" from "command succeeded but
+ * returned an empty string". Use this whenever those two states have different
+ * semantics — e.g. checking for a config value that may simply not be set.
+ */
 function runOrNull(args: string[]): string | null {
   try {
     return (execFileSync('git', args, EXEC_OPTS) as string).trim();
