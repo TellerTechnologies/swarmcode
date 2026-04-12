@@ -20,14 +20,15 @@ export function computeGrade(card: Scorecard): { grade: Scorecard['grade']; grad
     return { grade: 'D', gradeReason: `Duplicate work detected: ${card.duplicateWork} instance(s).` };
   }
 
-  // C: merge problems
+  // C: unresolvable merge problems
   if (mergeFailures > 0) {
     return { grade: 'C', gradeReason: `${mergeFailures} branch(es) failed to merge. Conflicts require manual resolution.` };
   }
 
-  // B: conflicts hit but resolved
-  if (card.conflictsHit > 0) {
-    return { grade: 'B', gradeReason: `Good coordination. ${card.conflictsHit} conflict(s) on shared files, but all resolved cleanly.` };
+  // B: conflicts that were auto-resolved
+  const autoResolved = card.conflictsAutoResolved ?? 0;
+  if (autoResolved > 0) {
+    return { grade: 'B', gradeReason: `Good coordination. ${autoResolved} conflict(s) auto-resolved with patience merge strategy.` };
   }
 
   // A: perfect
@@ -65,7 +66,8 @@ export function formatScorecard(card: Scorecard): string {
   lines.push('');
   lines.push('  COORDINATION');
   lines.push(`  Issue deduplication:  ${card.issueDeduplication ? '✓' : '✗'}  (${card.issueDeduplication ? 'all agents picked unique issues' : 'DUPLICATE CLAIMS'})`);
-  lines.push(`  Conflicts hit:        ${card.conflictsHit}`);
+  lines.push(`  Conflicts resolved:   ${card.conflictsAutoResolved}${card.conflictsAutoResolved > 0 ? '  (auto-merged with patience strategy)' : ''}`);
+  lines.push(`  Conflicts unresolved: ${card.conflictsUnresolved}`);
   lines.push(`  Duplicate work:       ${card.duplicateWork}`);
   lines.push(`  Files touched by 2+:  ${card.filesOverlap.length}`);
 

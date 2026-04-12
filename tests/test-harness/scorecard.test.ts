@@ -13,12 +13,13 @@ function makeScorecard(overrides: Partial<Scorecard> = {}): Scorecard {
       { agentId: 'agent-2', commits: 3, pushes: 2, issueIdentifier: 'TEL-2', issueCompleted: true, timedOut: false, durationSeconds: 600 },
     ],
     mergeResults: [
-      { branch: 'feat/tel-1-feature-a', success: true, conflictFiles: [] },
-      { branch: 'feat/tel-2-feature-b', success: true, conflictFiles: [] },
+      { branch: 'feat/tel-1-feature-a', success: true, autoResolved: false, conflictFiles: [] },
+      { branch: 'feat/tel-2-feature-b', success: true, autoResolved: false, conflictFiles: [] },
     ],
     testsPass: true,
     issueDeduplication: true,
-    conflictsHit: 0,
+    conflictsAutoResolved: 0,
+    conflictsUnresolved: 0,
     conflictsAvoided: 0,
     duplicateWork: 0,
     grade: 'A',
@@ -38,10 +39,10 @@ describe('computeGrade', () => {
 
   it('gives B for minor conflicts resolved cleanly', () => {
     const card = makeScorecard({
-      conflictsHit: 1,
+      conflictsAutoResolved: 1,
       mergeResults: [
-        { branch: 'feat/tel-1', success: true, conflictFiles: [] },
-        { branch: 'feat/tel-2', success: true, conflictFiles: ['src/shared.ts'] },
+        { branch: 'feat/tel-1', success: true, autoResolved: false, conflictFiles: [] },
+        { branch: 'feat/tel-2', success: true, autoResolved: true, conflictFiles: ['src/shared.ts'] },
       ],
     });
     const { grade } = computeGrade(card);
@@ -50,14 +51,26 @@ describe('computeGrade', () => {
 
   it('gives C for merge failures', () => {
     const card = makeScorecard({
-      conflictsHit: 2,
+      conflictsUnresolved: 1,
       mergeResults: [
-        { branch: 'feat/tel-1', success: false, conflictFiles: ['src/a.ts', 'src/b.ts'] },
-        { branch: 'feat/tel-2', success: true, conflictFiles: [] },
+        { branch: 'feat/tel-1', success: false, autoResolved: false, conflictFiles: ['src/a.ts', 'src/b.ts'] },
+        { branch: 'feat/tel-2', success: true, autoResolved: false, conflictFiles: [] },
       ],
     });
     const { grade } = computeGrade(card);
     expect(grade).toBe('C');
+  });
+
+  it('gives B for auto-resolved conflicts when tests pass', () => {
+    const card = makeScorecard({
+      conflictsAutoResolved: 1,
+      mergeResults: [
+        { branch: 'feat/tel-1', success: true, autoResolved: false, conflictFiles: [] },
+        { branch: 'feat/tel-2', success: true, autoResolved: true, conflictFiles: ['src/shared.ts'] },
+      ],
+    });
+    const { grade } = computeGrade(card);
+    expect(grade).toBe('B');
   });
 
   it('gives D for incomplete issues', () => {

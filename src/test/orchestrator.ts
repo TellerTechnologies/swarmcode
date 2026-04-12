@@ -88,8 +88,9 @@ function mergeAgentBranches(repoRoot: string, testBranch: string, agents: AgentR
   for (const agent of sorted) {
     try {
       execFileSync('git', ['merge', agent.branchName, '--no-edit'], { ...EXEC_OPTS, cwd: repoRoot });
-      results.push({ branch: agent.branchName, success: true, conflictFiles: [] });
+      results.push({ branch: agent.branchName, success: true, autoResolved: false, conflictFiles: [] });
     } catch {
+      // Standard merge failed — collect conflict files and abort
       const conflictFiles: string[] = [];
       try {
         const status = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { ...EXEC_OPTS, cwd: repoRoot }).trim();
@@ -100,7 +101,24 @@ function mergeAgentBranches(repoRoot: string, testBranch: string, agents: AgentR
         execFileSync('git', ['merge', '--abort'], { ...EXEC_OPTS, cwd: repoRoot });
       } catch { /* ignore */ }
 
-      results.push({ branch: agent.branchName, success: false, conflictFiles });
+      // Retry with patience merge strategy
+      try {
+        execFileSync('git', ['merge', agent.branchName, '--no-edit', '-X', 'patience'], { ...EXEC_OPTS, cwd: repoRoot });
+        results.push({ branch: agent.branchName, success: true, autoResolved: true, conflictFiles });
+      } catch {
+        // Patience merge also failed — collect updated conflict files and abort
+        const patienceConflictFiles: string[] = [];
+        try {
+          const status = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { ...EXEC_OPTS, cwd: repoRoot }).trim();
+          if (status) patienceConflictFiles.push(...status.split('\n'));
+        } catch { /* ignore */ }
+
+        try {
+          execFileSync('git', ['merge', '--abort'], { ...EXEC_OPTS, cwd: repoRoot });
+        } catch { /* ignore */ }
+
+        results.push({ branch: agent.branchName, success: false, autoResolved: false, conflictFiles: patienceConflictFiles.length > 0 ? patienceConflictFiles : conflictFiles });
+      }
     }
   }
 
@@ -366,7 +384,8 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
       : 0,
   }));
 
-  const conflictsHit = mergeResults.filter(m => m.conflictFiles.length > 0).length;
+  const conflictsAutoResolved = mergeResults.filter(m => m.autoResolved).length;
+  const conflictsUnresolved = mergeResults.filter(m => !m.success).length;
   const scorecard: Scorecard = {
     runId: config.runId,
     scenarioName: scenario.name,
@@ -376,7 +395,8 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
     mergeResults,
     testsPass,
     issueDeduplication,
-    conflictsHit,
+    conflictsAutoResolved,
+    conflictsUnresolved,
     conflictsAvoided: 0,
     duplicateWork: 0,
     grade: 'A',

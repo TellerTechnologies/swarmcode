@@ -112,6 +112,7 @@ export interface AgentMetrics {
 export interface MergeResult {
   branch: string;
   success: boolean;
+  autoResolved: boolean;
   conflictFiles: string[];
 }
 
@@ -124,7 +125,8 @@ export interface Scorecard {
   mergeResults: MergeResult[];
   testsPass: boolean;
   issueDeduplication: boolean;
-  conflictsHit: number;
+  conflictsAutoResolved: number;
+  conflictsUnresolved: number;
   conflictsAvoided: number;
   duplicateWork: number;
   grade: 'A' | 'B' | 'C' | 'D';
