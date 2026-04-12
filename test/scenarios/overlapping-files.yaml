@@ -15,6 +15,7 @@ issues:
       - [ ] Add JSDoc comment
       - [ ] Add unit test in tests/git.test.ts
     labels: [backend]
+    agent: typescript-pro
 
   - title: "Add ensureFresh documentation and test"
     description: |
@@ -23,6 +24,7 @@ issues:
       - [ ] Add JSDoc to ensureFresh
       - [ ] Add unit test for the staleness throttle behavior
     labels: [backend]
+    agent: test-automator
 
   - title: "Add run helper documentation in git.ts"
     description: |
@@ -32,6 +34,7 @@ issues:
       - [ ] Add inline comments to run and runOrNull
       - [ ] Add unit test for getRepoRoot in tests/git.test.ts
     labels: [backend]
+    agent: code-reviewer
 
 overlap_profile: high
 expected_conflicts: 1-3

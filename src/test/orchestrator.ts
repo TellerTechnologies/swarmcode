@@ -218,11 +218,12 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
   const issueIdentifiers = await createTestIssues(scenario, team.id);
   console.log(`   Created: ${issueIdentifiers.join(', ')}`);
 
-  const agents: AgentRun[] = scenario.issues.map((_, i) => ({
+  const agents: AgentRun[] = scenario.issues.map((issue, i) => ({
     id: `agent-${i + 1}`,
     worktreePath: join(repoRoot, '.swarmcode-test', config.runId, `agent-${i + 1}`),
     branchName: `swarmcode-test-agent-${i + 1}-${config.runId}`,
     issueIdentifier: issueIdentifiers[i],
+    agentType: issue.agent,
     timedOut: false,
     issueCompleted: false,
   }));

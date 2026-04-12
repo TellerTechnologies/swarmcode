@@ -8,6 +8,7 @@ export interface ScenarioIssue {
   title: string;
   description: string;
   labels?: string[];
+  agent?: string;  // Claude Code agent name (e.g. "typescript-pro")
 }
 
 export interface Scenario {
@@ -47,6 +48,7 @@ export function parseScenario(yamlContent: string): Scenario {
       title: i.title,
       description: i.description ?? '',
       labels: i.labels ?? [],
+      agent: i.agent,
     })),
     overlap_profile: raw.overlap_profile,
     expected_conflicts: raw.expected_conflicts,
@@ -76,6 +78,7 @@ export interface AgentRun {
   worktreePath: string;
   branchName: string;
   issueIdentifier: string;
+  agentType?: string;  // Claude Code agent name (e.g. "typescript-pro")
   pid?: number;
   startedAt?: string;
   completedAt?: string;

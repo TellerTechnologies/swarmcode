@@ -55,7 +55,12 @@ export function launchAgent(agent: AgentRun, config: RunConfig): ChildProcess {
   const logPath = join(config.resultsDir, `${agent.id}.log`);
   const logStream = createWriteStream(logPath);
 
-  const child = spawn('claude', ['-p', prompt, '--dangerously-skip-permissions'], {
+  const args = ['-p', prompt, '--dangerously-skip-permissions'];
+  if (agent.agentType) {
+    args.push('--agent', agent.agentType);
+  }
+
+  const child = spawn('claude', args, {
     cwd: agent.worktreePath,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
