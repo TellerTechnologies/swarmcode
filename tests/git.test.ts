@@ -492,6 +492,60 @@ describe('getUpstreamBranch', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// ensureFresh
+// ---------------------------------------------------------------------------
+describe('ensureFresh', () => {
+  it('calls git fetch --all --prune and returns true when stale', () => {
+    mockExecFileSync.mockReturnValue('' as any);
+    // stalenessSeconds = 0 means now - lastFetch < 0 is never true → always fetches
+    const result = git.ensureFresh(0);
+    expect(result).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      expect.objectContaining({ encoding: 'utf-8', timeout: 15_000 }),
+    );
+  });
+
+  it('skips fetch and returns false when within staleness window', () => {
+    mockExecFileSync.mockReturnValue('' as any);
+    // Prime lastFetchTimestamp to "now" with a forced fetch
+    git.ensureFresh(0);
+    mockExecFileSync.mockClear();
+    // Call with a large staleness window — timestamp is still fresh
+    const result = git.ensureFresh(9999);
+    expect(result).toBe(false);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('returns false and does not update timestamp when fetch throws', () => {
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('network error');
+    });
+    // stalenessSeconds = 0 always triggers a fetch attempt
+    const result = git.ensureFresh(0);
+    expect(result).toBe(false);
+    // Verify the fetch was attempted
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      expect.any(Object),
+    );
+  });
+
+  it('skips fetch with default 30 s staleness immediately after a successful fetch', () => {
+    mockExecFileSync.mockReturnValue('' as any);
+    // Prime the timestamp
+    git.ensureFresh(0);
+    mockExecFileSync.mockClear();
+    // Default staleness is 30 s — we just fetched so it should be skipped
+    const result = git.ensureFresh();
+    expect(result).toBe(false);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
+});
+
 describe('push', () => {
   it('pushes with -u when setUpstream is true', () => {
     mockExecFileSync.mockReturnValue('');
