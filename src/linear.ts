@@ -427,6 +427,19 @@ export async function startIssue(identifier: string): Promise<LinearWriteResult>
     const issue = await lookupIssue(identifier);
     const viewer = await client.viewer;
 
+    // Optimistic lock: reject if the issue is already in progress or assigned to someone else.
+    // This prevents two agents from claiming the same issue in a race condition.
+    const currentState = await issue.state;
+    const currentAssignee = await issue.assignee;
+    if (currentState?.type === 'started' || currentState?.type === 'completed') {
+      const who = currentAssignee?.name ?? 'someone';
+      return {
+        success: false,
+        issue: null,
+        error: `Issue ${identifier} is already ${currentState.name} (assigned to ${who}). Pick a different issue.`,
+      };
+    }
+
     const team = await issue.team;
     if (!team) return { success: false, issue: null, error: 'Could not resolve team for issue' };
     const statesConn = await team.states();

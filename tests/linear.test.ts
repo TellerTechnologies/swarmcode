@@ -672,7 +672,18 @@ describe('getIssue', () => {
 // ===========================================================================
 
 describe('startIssue', () => {
+  // Helper: create an unstarted issue for happy-path tests
+  function setUnstartedIssue(overrides: Record<string, unknown> = {}) {
+    const issue = createMockIssue({
+      state: Promise.resolve({ id: 'state-todo', name: 'Todo', type: 'unstarted' }),
+      assignee: Promise.resolve(null),
+      ...overrides,
+    });
+    getMock().issue.mockResolvedValue(issue);
+  }
+
   it('assigns to viewer and moves to started state', async () => {
+    setUnstartedIssue();
     const result = await startIssue('ENG-1');
 
     expect(result.success).toBe(true);
@@ -683,9 +694,28 @@ describe('startIssue', () => {
   });
 
   it('returns updated issue data on success', async () => {
+    setUnstartedIssue();
     const result = await startIssue('ENG-1');
     expect(result.issue).not.toBeNull();
     expect(result.issue!.identifier).toBe('ENG-1');
+  });
+
+  it('rejects if issue is already in progress', async () => {
+    // Default mock has state: 'started' — do not override
+    const result = await startIssue('ENG-1');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('already');
+    expect(getMock().updateIssue).not.toHaveBeenCalled();
+  });
+
+  it('rejects if issue is already completed', async () => {
+    const completedIssue = createMockIssue({
+      state: Promise.resolve({ id: 'state-done', name: 'Done', type: 'completed' }),
+    });
+    getMock().issue.mockResolvedValue(completedIssue);
+    const result = await startIssue('ENG-1');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('already');
   });
 
   it('returns error when issue not found', async () => {
@@ -696,7 +726,11 @@ describe('startIssue', () => {
   });
 
   it('returns error when team cannot be resolved', async () => {
-    const issueNoTeam = createMockIssue({ team: Promise.resolve(null) });
+    const issueNoTeam = createMockIssue({
+      state: Promise.resolve({ id: 'state-todo', name: 'Todo', type: 'unstarted' }),
+      assignee: Promise.resolve(null),
+      team: Promise.resolve(null),
+    });
     getMock().issue.mockResolvedValue(issueNoTeam);
     const result = await startIssue('ENG-1');
     expect(result.success).toBe(false);
@@ -713,8 +747,7 @@ describe('startIssue', () => {
         ],
       }),
     };
-    const issueNoStarted = createMockIssue({ team: Promise.resolve(teamNoStarted) });
-    getMock().issue.mockResolvedValue(issueNoStarted);
+    setUnstartedIssue({ team: Promise.resolve(teamNoStarted) });
 
     const result = await startIssue('ENG-1');
     expect(result.success).toBe(true);
