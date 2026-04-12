@@ -439,6 +439,18 @@ describe('getMainBranch', () => {
     mockExecFileSync.mockImplementation(() => { throw new Error('not a repo'); });
     expect(git.getMainBranch()).toBe('HEAD');
   });
+
+  it('prefers origin/main over origin/master when both exist', () => {
+    mockExecFileSync.mockReturnValue('  origin/main\n  origin/master\n  origin/develop\n' as any);
+    expect(git.getMainBranch()).toBe('origin/main');
+  });
+
+  it('falls back to local branches when remote list is empty', () => {
+    mockExecFileSync
+      .mockReturnValueOnce('' as any)                        // git branch -r (empty)
+      .mockReturnValueOnce('* main\n  feature-x\n' as any); // git branch (local)
+    expect(git.getMainBranch()).toBe('main');
+  });
 });
 
 describe('getHeadSha', () => {

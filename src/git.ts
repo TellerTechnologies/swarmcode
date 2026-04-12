@@ -227,8 +227,22 @@ export interface PushResult {
 
 /**
  * Detects the main/default branch by checking remote then local branches.
- * Prefers `origin/main` over `origin/master`, falls back to local `main` or
- * `master`, and returns `'HEAD'` if none are found.
+ *
+ * Resolution order:
+ * 1. `origin/main`   — preferred remote default
+ * 2. `origin/master`  — legacy remote default
+ * 3. `main`           — local fallback
+ * 4. `master`         — local legacy fallback
+ * 5. `'HEAD'`         — last-resort sentinel when no standard branch is found
+ *
+ * @returns The name of the main branch (remote-prefixed when available),
+ *          or `'HEAD'` if no standard main/master branch exists.
+ *
+ * @example
+ * ```ts
+ * const main = getMainBranch(); // e.g. 'origin/main'
+ * const base = getMergeBase(main, 'feature-branch');
+ * ```
  */
 export function getMainBranch(): string {
   const remote = run(['branch', '-r']);
