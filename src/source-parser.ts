@@ -10,6 +10,30 @@ export interface ExportSearchResult {
   signature: string;
 }
 
+/**
+ * Union of language keys supported by {@link searchExports} and
+ * {@link detectLanguage}.
+ *
+ * Each key corresponds to a set of regex patterns that extract exported
+ * symbols (functions, classes, types, etc.) from source code written in
+ * that language.
+ */
+export type LANGUAGE_PATTERNS =
+  | 'typescript'
+  | 'javascript'
+  | 'python'
+  | 'go'
+  | 'rust'
+  | 'ruby'
+  | 'php'
+  | 'java'
+  | 'kotlin'
+  | 'csharp'
+  | 'swift'
+  | 'cpp'
+  | 'elixir'
+  | 'scala';
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -69,8 +93,18 @@ export function detectLanguage(filePath: string): string | null {
 }
 
 /**
- * Search for exported symbols whose name matches query (case-insensitive
- * substring match).
+ * Search source code for exported symbols whose name matches a query.
+ *
+ * Performs a case-insensitive substring match against exported symbol names
+ * for the given language. Each supported language has its own set of regex
+ * patterns that extract functions, classes, types, and other top-level
+ * declarations.
+ *
+ * @param code - The raw source code to search through.
+ * @param language - A {@link LANGUAGE_PATTERNS} key identifying the source language.
+ * @param query - The substring to match against symbol names (case-insensitive).
+ * @returns An array of {@link ExportSearchResult} objects for every exported
+ *          symbol whose name contains `query`.
  */
 export function searchExports(
   code: string,
