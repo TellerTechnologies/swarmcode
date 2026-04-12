@@ -352,5 +352,73 @@ git fetch origin 2>/dev/null
       startDashboard(parseInt(options.port, 10));
     });
 
+  // ---------------------------------------------------------------------------
+  // Test harness
+  // ---------------------------------------------------------------------------
+
+  const testCmd = program
+    .command('test')
+    .description('Multi-agent test harness for coordination testing');
+
+  testCmd
+    .command('run')
+    .description('Run a test scenario with concurrent agents')
+    .requiredOption('--scenario <path>', 'Path to scenario YAML file')
+    .option('--agents <count>', 'Override agent count from scenario')
+    .action(async (options) => {
+      const { runScenario } = await import('./test/orchestrator.js');
+      const { resolve } = await import('node:path');
+      const scenarioPath = resolve(options.scenario);
+      try {
+        await runScenario(scenarioPath);
+      } catch (e: any) {
+        console.error(`Test run failed: ${e.message}`);
+        process.exitCode = 1;
+      }
+    });
+
+  testCmd
+    .command('list')
+    .description('List available test scenarios')
+    .action(async () => {
+      const { listScenarios } = await import('./test/orchestrator.js');
+      const scenarios = listScenarios();
+      if (scenarios.length === 0) {
+        console.log('No scenarios found in test/scenarios/');
+        return;
+      }
+      console.log('Available scenarios:\n');
+      for (const s of scenarios) {
+        console.log(`  ${s.name.padEnd(30)} ${s.agents} agents  ${s.description}`);
+      }
+    });
+
+  testCmd
+    .command('cleanup')
+    .description('Remove orphaned worktrees and archive stale test issues')
+    .action(async () => {
+      const { cleanupOrphans } = await import('./test/orchestrator.js');
+      const result = await cleanupOrphans();
+      console.log(`Cleaned up: ${result.worktreesRemoved} worktree(s), ${result.issuesArchived} issue(s)`);
+    });
+
+  testCmd
+    .command('report')
+    .description('Reprint a past scorecard')
+    .argument('<run-id>', 'Run ID to display')
+    .action(async (runId: string) => {
+      const { readFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { formatScorecard } = await import('./test/scorecard.js');
+      try {
+        const cardPath = join('test', 'results', runId, 'scorecard.json');
+        const card = JSON.parse(readFileSync(cardPath, 'utf-8'));
+        console.log(formatScorecard(card));
+      } catch {
+        console.error(`No scorecard found for run: ${runId}`);
+        process.exitCode = 1;
+      }
+    });
+
   return program;
 }
