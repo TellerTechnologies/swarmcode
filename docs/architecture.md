@@ -61,6 +61,13 @@ src/
 │   ├── server.ts       HTTP server for live web dashboard. Serves HTML, JSON API, and SSE.
 │   └── index.html      Single-page dashboard frontend. Dark theme, 4 panels, no build step.
 │
+├── test/
+│   ├── orchestrator.ts    Multi-agent test harness: scenario parsing, agent lifecycle, scorecard generation
+│   ├── agent-launcher.ts  Worktree creation, Claude Code subprocess management
+│   ├── event-collector.ts Git/Linear polling during test runs
+│   ├── scorecard.ts       Grading logic (A/B/C/D), terminal formatting, JSON export
+│   └── types.ts           Shared types for scenarios, events, metrics, scorecards
+│
 ├── types.ts            All type definitions (GitCommit, AuthorActivity, etc.)
 ├── index.ts            Public exports (VERSION + types)
 └── cli.ts              Commander CLI. Default action starts MCP server.
@@ -83,6 +90,16 @@ src/
 | `disable_auto_push` | End of session (optional) | Clears interval |
 
 All tools are read-only. The AI's work is shared when it commits normally.
+
+### Multi-Agent Coordination
+
+Three mechanisms prevent conflicts when multiple agents work concurrently:
+
+**Optimistic lock on `pick_issue`:** Before claiming an issue, `startIssue()` checks if the issue is already In Progress or completed. If another agent claimed it first, the call returns an error prompting the agent to pick a different issue. This prevents duplicate work at the task level.
+
+**Pre-write conflict detection in `check_path`:** When an agent checks a file path before editing, `check_path` now runs `git merge-tree HEAD <other-branch>` against all active remote branches. If the file would produce a merge conflict, the risk level is set to `conflict_likely` with specific branch details. This uses Git's three-way merge algorithm without modifying the working tree.
+
+**Patience merge auto-resolution (test harness):** When merging agent branches, the test harness first attempts a standard merge. If that fails, it retries with `git merge -X patience`, which handles additions in the same file area better than the default strategy. Auto-resolved conflicts are graded as B (not D).
 
 ## Auto-fetch
 

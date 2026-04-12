@@ -99,3 +99,27 @@ Decisions made during the v2 rewrite and the reasoning behind them. Read this be
 **Trade-off:** The inline markdown renderer is basic (no syntax highlighting, limited table support). Acceptable for rendering PLAN.md and specs.
 
 **When to revisit:** If the dashboard grows significantly in complexity (interactive editing, filters, multi-repo views), consider a lightweight framework. Until then, vanilla JS is fine.
+
+### Optimistic locks over distributed coordination
+
+`pick_issue` checks issue state before claiming — if already In Progress, it rejects with an error. This is simpler than distributed locks, message queues, or a coordination server.
+
+**Trade-off:** There's still a small race window between the state check and the update. For AI agents with 5s staggered launches, this is sufficient. If agents launched simultaneously with sub-second timing, a true atomic compare-and-swap via Linear's API would be needed.
+
+### Pre-write conflict detection via git merge-tree
+
+`check_path` runs `git merge-tree` against active branches to detect if editing a file would cause a merge conflict. This catches conflicts *before* they happen, not after.
+
+**Trade-off:** Adds ~100-500ms per `check_path` call (one `git merge-tree` per active branch). This is acceptable since `check_path` runs before edits, not in a hot loop. The alternative — file-level locking — would be heavier and break swarmcode's stateless design.
+
+### Patience merge as auto-resolution strategy
+
+When the test harness hits a merge conflict, it retries with `git merge -X patience`. The patience diff algorithm is better at handling cases where multiple agents add content to the same area of a file (common with JSDoc additions, test additions, etc.).
+
+**Trade-off:** Patience merge can silently produce wrong results if both agents modified the same logical block differently. For the test harness this is acceptable because the test suite runs after merge and catches semantic errors. For production use, manual review would be needed.
+
+### Real agents over mocks for coordination testing
+
+The test harness launches real Claude Code sessions with real Linear tickets, not mocked agents. This means test results reflect actual coordination behavior.
+
+**Trade-off:** Tests are slow (3-5 minutes), expensive (API costs for N Claude sessions), and non-deterministic. But mocked tests would miss the exact race conditions and behavioral patterns that matter — we caught the duplicate-claim bug only because we used real agents.

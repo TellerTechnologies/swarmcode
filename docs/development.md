@@ -43,6 +43,14 @@ tests/
 │   └── get-project-context.test.ts  Real filesystem tests against temp directories
 ├── cli-init.test.ts               Runs real CLI against temp directories
 ├── cli-hook.test.ts               Runs real CLI against temp git repos, tests hook installation
+├── test-harness/
+│   ├── types.test.ts              Scenario YAML parsing and validation
+│   ├── scorecard.test.ts          Grading logic (A/B/C/D) and terminal formatting
+│   ├── event-collector.test.ts    Event recording and JSON export
+│   ├── agent-launcher.test.ts     Prompt building, MCP config, worktree functions
+│   ├── orchestrator.test.ts       Run ID generation, config building
+│   ├── cli-test.test.ts           CLI command registration
+│   └── integration.test.ts        End-to-end pipeline (scenario → config → scorecard)
 └── integration/
     ├── mcp-server.test.ts         Real git repo, no mocks, end-to-end
     └── two-agents.test.ts         Two cloned repos, multi-agent coordination
@@ -51,6 +59,62 @@ tests/
 **Unit tests** mock `git.ts` (via `vi.mock('../../src/git.js')`) so they run instantly without touching the filesystem.
 
 **Integration tests** create a temporary git repo with multiple authors and branches in `beforeAll`, run the actual tool functions, then clean up in `afterAll`. They use `process.chdir()` to set the working directory.
+
+### Running Multi-Agent Tests
+
+The test harness orchestrates real Claude Code agents working concurrently on the same repo.
+
+**Prerequisites:**
+- `SWARMCODE_LINEAR_API_KEY` environment variable set
+- `SWARMCODE_LINEAR_TEAM` set to the target Linear team key
+- `claude` CLI on PATH
+
+**Running a scenario:**
+
+```bash
+# List available scenarios
+swarmcode test list
+
+# Run the independent tasks baseline (2 agents, non-overlapping)
+swarmcode test run --scenario test/scenarios/independent-tasks.yaml
+
+# Run the stress test (3 agents, overlapping files)
+swarmcode test run --scenario test/scenarios/overlapping-files.yaml
+```
+
+**Writing a new scenario:**
+
+Create a YAML file in `test/scenarios/`:
+
+```yaml
+name: my-scenario
+description: "What this tests"
+agents: 2
+base_branch: master
+test_command: "npm test"
+timeout_minutes: 30
+
+issues:
+  - title: "Task for agent 1"
+    description: |
+      - [ ] Checkbox items for tracking
+    labels: [backend]
+    agent: typescript-pro  # optional: use a custom .claude/agents/ agent
+
+  - title: "Task for agent 2"
+    description: |
+      - [ ] More checkboxes
+    labels: [backend]
+```
+
+Agent count must equal issue count. Each issue becomes a real Linear ticket. Issues are archived after the run.
+
+**Interpreting results:**
+
+Results are saved to `test/results/<run-id>/`:
+- `scorecard.json` — structured metrics and grade
+- `events.json` — timestamped event log
+- `agent-N.log` — each agent's stdout/stderr
 
 ## Adding a new tool
 

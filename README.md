@@ -75,7 +75,7 @@ Branch naming convention: `feat/eng-123-description`. The hooks parse the issue 
 | Tool | What |
 |------|------|
 | `start_session` | Everything at session start: activity, context, conflicts, auto-push |
-| `check_path` | Who owns this area? Pending changes? Risk level? |
+| `check_path` | Ownership analysis + risk assessment + **pre-write merge conflict detection via git merge-tree** |
 | `search_code` | Does this function already exist on any branch? |
 | `check_conflicts` | Files modified on multiple branches |
 | `get_developer` | One teammate's commits, branches, files |
@@ -85,7 +85,7 @@ Branch naming convention: `feat/eng-123-description`. The hooks parse the issue 
 
 | Tool | What |
 |------|------|
-| `pick_issue` | Claim ticket + get branch name (assigns + In Progress) |
+| `pick_issue` | Claim a Linear issue: assigns to you, moves to In Progress. **Includes optimistic lock -- rejects if issue is already claimed by another agent.** |
 | `complete_issue` | Mark Done |
 | `log_progress` | Comment on a ticket (milestones, not every commit) |
 | `create_issue` | Found a bug? Create a ticket |
@@ -128,6 +128,62 @@ Live web dashboard with five panels:
 
 Auto-updates every 30 seconds.
 
+## Multi-Agent Testing
+
+Swarmcode includes a test harness for validating coordination between concurrent AI agents.
+
+### Quick Start
+
+```bash
+# List available scenarios
+swarmcode test list
+
+# Run a scenario with concurrent agents
+swarmcode test run --scenario test/scenarios/overlapping-files.yaml
+
+# View past results
+swarmcode test report <run-id>
+
+# Clean up orphaned worktrees and test issues
+swarmcode test cleanup
+```
+
+### Scenarios
+
+Define test scenarios in YAML:
+
+```yaml
+name: overlapping-files
+description: "3 agents modifying shared modules"
+agents: 3
+base_branch: master
+test_command: "npm test"
+timeout_minutes: 30
+
+issues:
+  - title: "Add feature A"
+    description: "..."
+    agent: typescript-pro  # uses .claude/agents/typescript-pro.md
+  - title: "Add feature B"
+    description: "..."
+    agent: test-automator
+```
+
+### Scorecard
+
+Each run produces a graded scorecard:
+
+- **A** — zero conflicts, zero duplication, all tests pass
+- **B** — conflicts auto-resolved with patience merge strategy
+- **C** — unresolvable merge conflicts
+- **D** — incomplete issues, duplicate claims, or test failures
+
+### Conflict Prevention
+
+- **Optimistic lock on `pick_issue`** — prevents two agents from claiming the same issue
+- **Pre-write conflict detection** — `check_path` runs `git merge-tree` against active branches to warn before edits
+- **Auto-resolution** — the harness retries failed merges with `git merge -X patience`
+
 ## CLI
 
 ```bash
@@ -136,6 +192,10 @@ swarmcode init                     # add coordination rules
 swarmcode hook                     # install git hooks
 swarmcode status                   # team activity from terminal
 swarmcode dashboard                # launch web dashboard
+swarmcode test run                 # run a multi-agent test scenario
+swarmcode test list                # list available scenarios
+swarmcode test report              # reprint a past scorecard
+swarmcode test cleanup             # remove orphaned worktrees and test issues
 ```
 
 ## Requirements
