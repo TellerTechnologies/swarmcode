@@ -1,0 +1,30 @@
+name: independent-tasks
+description: "Baseline: 2 agents working on non-overlapping areas"
+agents: 2
+base_branch: master
+test_command: "npm test"
+timeout_minutes: 30
+
+issues:
+  - title: "Add JSDoc comments to branch-parser.ts"
+    description: |
+      Add JSDoc documentation to all exported functions in src/branch-parser.ts.
+
+      - [ ] Add JSDoc to extractIssueId
+      - [ ] Add JSDoc to messageHasIssueId
+      - [ ] Add JSDoc to prependIssueId
+    labels: [docs]
+
+  - title: "Add JSDoc comments to source-parser.ts exports"
+    description: |
+      Add JSDoc documentation to the main exported functions in src/source-parser.ts.
+
+      - [ ] Add JSDoc to searchExports
+      - [ ] Add JSDoc to LANGUAGE_PATTERNS type
+    labels: [docs]
+
+overlap_profile: low
+expected_conflicts: 0
+success_criteria:
+  - all_issues_completed: true
+  - no_duplicate_implementations: true

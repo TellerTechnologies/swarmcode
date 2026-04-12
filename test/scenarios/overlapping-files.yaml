@@ -1,0 +1,41 @@
+name: overlapping-files
+description: "Stress test: 3 agents modifying shared modules"
+agents: 3
+base_branch: master
+test_command: "npm test"
+timeout_minutes: 30
+
+issues:
+  - title: "Add getMainBranch helper to git.ts"
+    description: |
+      The getMainBranch function in git.ts should be exported and documented.
+      Also add a unit test for it.
+
+      - [ ] Ensure getMainBranch is exported
+      - [ ] Add JSDoc comment
+      - [ ] Add unit test in tests/git.test.ts
+    labels: [backend]
+
+  - title: "Add ensureFresh documentation and test"
+    description: |
+      The ensureFresh function in git.ts needs JSDoc and a unit test.
+
+      - [ ] Add JSDoc to ensureFresh
+      - [ ] Add unit test for the staleness throttle behavior
+    labels: [backend]
+
+  - title: "Add run helper documentation in git.ts"
+    description: |
+      Document the internal run and runOrNull helpers in git.ts with inline comments.
+      Also add a test for getRepoRoot.
+
+      - [ ] Add inline comments to run and runOrNull
+      - [ ] Add unit test for getRepoRoot in tests/git.test.ts
+    labels: [backend]
+
+overlap_profile: high
+expected_conflicts: 1-3
+success_criteria:
+  - all_issues_completed: true
+  - merge_conflicts_resolved: true
+  - all_tests_pass: true

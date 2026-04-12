@@ -3,3 +3,6 @@ dist/
 .swarmcode/
 *.tsbuildinfo
 .superpowers/
+.env
+test/results/
+.swarmcode-test/
