@@ -400,6 +400,47 @@ describe('getStatusForPath', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// getMainBranch
+// ---------------------------------------------------------------------------
+describe('getMainBranch', () => {
+  it('returns origin/main when remote has origin/main', () => {
+    mockExecFileSync.mockReturnValue('  origin/main\n  origin/develop\n' as any);
+    expect(git.getMainBranch()).toBe('origin/main');
+  });
+
+  it('returns origin/master when remote has origin/master but not origin/main', () => {
+    mockExecFileSync.mockReturnValueOnce('  origin/master\n  origin/develop\n' as any);
+    expect(git.getMainBranch()).toBe('origin/master');
+  });
+
+  it('falls back to local main when no remote branches match', () => {
+    mockExecFileSync
+      .mockReturnValueOnce('  origin/develop\n' as any)  // git branch -r (no main/master)
+      .mockReturnValueOnce('* main\n  feature-x\n' as any);  // git branch (local)
+    expect(git.getMainBranch()).toBe('main');
+  });
+
+  it('falls back to local master when no remote or local main', () => {
+    mockExecFileSync
+      .mockReturnValueOnce('  origin/develop\n' as any)  // git branch -r
+      .mockReturnValueOnce('* master\n  feature-x\n' as any);  // git branch
+    expect(git.getMainBranch()).toBe('master');
+  });
+
+  it('returns HEAD when no main or master branch exists', () => {
+    mockExecFileSync
+      .mockReturnValueOnce('  origin/develop\n' as any)  // git branch -r
+      .mockReturnValueOnce('* feature-x\n  develop\n' as any);  // git branch
+    expect(git.getMainBranch()).toBe('HEAD');
+  });
+
+  it('returns HEAD when all git commands fail', () => {
+    mockExecFileSync.mockImplementation(() => { throw new Error('not a repo'); });
+    expect(git.getMainBranch()).toBe('HEAD');
+  });
+});
+
 describe('getHeadSha', () => {
   it('returns the current HEAD sha', () => {
     mockExecFileSync.mockReturnValue('abc123def456\n');

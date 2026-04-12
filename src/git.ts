@@ -225,6 +225,11 @@ export interface PushResult {
   error?: string;
 }
 
+/**
+ * Detects the main/default branch by checking remote then local branches.
+ * Prefers `origin/main` over `origin/master`, falls back to local `main` or
+ * `master`, and returns `'HEAD'` if none are found.
+ */
 export function getMainBranch(): string {
   const remote = run(['branch', '-r']);
   if (remote.includes('origin/main')) return 'origin/main';
