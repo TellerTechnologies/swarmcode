@@ -6,6 +6,7 @@ const mockExecFileSync = vi.mocked(cp.execFileSync);
 
 // Import after mock setup
 import {
+  ensureFresh,
   getRepoRoot,
   getCurrentUser,
   getCurrentBranch,
@@ -520,5 +521,106 @@ describe('push', () => {
     const result = git.push('feat/auth', false);
     expect(result.ok).toBe(false);
     expect(result.error).toContain('rejected');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureFresh — throttled auto-fetch
+// ---------------------------------------------------------------------------
+describe('ensureFresh', () => {
+  // Monotonically increasing base time so each test starts with a stale
+  // lastFetchTimestamp regardless of what the previous test set it to.
+  // We start at 10,000,000 ms (10,000 s) and advance 100 s per test, which
+  // is always greater than DEFAULT_FETCH_STALENESS_SECS (30 s).
+  let baseTimeMs = 10_000_000;
+
+  beforeEach(() => {
+    baseTimeMs += 100_000; // 100 s ahead of any previous lastFetchTimestamp
+    vi.useFakeTimers();
+    vi.setSystemTime(baseTimeMs);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('fetches on first call when data is stale and returns true', () => {
+    mockExecFileSync.mockReturnValue('');
+
+    const result = ensureFresh();
+
+    expect(result).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      expect.objectContaining({ encoding: 'utf-8', timeout: 15_000 }),
+    );
+  });
+
+  it('skips fetch and returns false when called within the staleness window', () => {
+    // Prime: first call triggers a fetch and records lastFetchTimestamp
+    mockExecFileSync.mockReturnValue('');
+    ensureFresh(30);
+    mockExecFileSync.mockClear();
+
+    // Advance only 10 s — still within the 30 s window
+    vi.setSystemTime(baseTimeMs + 10_000);
+
+    const result = ensureFresh(30);
+
+    expect(result).toBe(false);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('fetches again after the staleness window expires and returns true', () => {
+    // Prime: first call triggers a fetch
+    mockExecFileSync.mockReturnValue('');
+    ensureFresh(30);
+    mockExecFileSync.mockClear();
+
+    // Advance 31 s — past the 30 s window
+    vi.setSystemTime(baseTimeMs + 31_000);
+
+    const result = ensureFresh(30);
+
+    expect(result).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      expect.objectContaining({ timeout: 15_000 }),
+    );
+  });
+
+  it('returns false when fetch throws and does not update lastFetchTimestamp', () => {
+    // Fetch fails (e.g. no network)
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('network error');
+    });
+
+    const result = ensureFresh();
+    expect(result).toBe(false);
+
+    // Because lastFetchTimestamp was NOT updated, a subsequent call at the
+    // same time should attempt another fetch (still stale).
+    mockExecFileSync.mockClear();
+    mockExecFileSync.mockReturnValue('');
+    const retryResult = ensureFresh();
+    expect(retryResult).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects a custom staleness threshold', () => {
+    // Prime: first call with a 60 s threshold
+    mockExecFileSync.mockReturnValue('');
+    ensureFresh(60);
+    mockExecFileSync.mockClear();
+
+    // Advance 31 s — stale for 30 s threshold, but still fresh for 60 s
+    vi.setSystemTime(baseTimeMs + 31_000);
+
+    const result = ensureFresh(60);
+
+    expect(result).toBe(false); // 31 s < 60 s → throttled
+    expect(mockExecFileSync).not.toHaveBeenCalled();
   });
 });
