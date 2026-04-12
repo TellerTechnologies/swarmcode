@@ -14,6 +14,16 @@ let lastFetchTimestamp = 0;
  * Ensures remote refs are fresh by running `git fetch --all --prune` if the
  * last fetch was more than `stalenessSeconds` ago. Safe to call frequently —
  * the throttle prevents hammering the remote.
+ *
+ * The staleness check uses a module-level timestamp that persists for the
+ * lifetime of the process, so repeated calls within the window are no-ops.
+ * If the fetch command fails (e.g. no network, no remote configured), the
+ * timestamp is **not** updated — the next call will retry immediately.
+ *
+ * @param stalenessSeconds - Maximum age (in seconds) of the last successful
+ *   fetch before a new one is triggered. Defaults to {@link DEFAULT_FETCH_STALENESS_SECS} (30s).
+ * @returns `true` if a fetch was actually performed, `false` if the data was
+ *   still fresh or the fetch failed.
  */
 export function ensureFresh(stalenessSeconds: number = DEFAULT_FETCH_STALENESS_SECS): boolean {
   const now = Date.now() / 1000;

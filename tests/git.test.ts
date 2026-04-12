@@ -6,6 +6,7 @@ const mockExecFileSync = vi.mocked(cp.execFileSync);
 
 // Import after mock setup
 import {
+  ensureFresh,
   getRepoRoot,
   getCurrentUser,
   getCurrentBranch,
@@ -23,6 +24,117 @@ import * as git from '../src/git.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// ensureFresh
+// ---------------------------------------------------------------------------
+describe('ensureFresh', () => {
+  // Each test uses a unique, widely-spaced timestamp (in ms) to avoid
+  // interference from the module-level `lastFetchTimestamp` that persists
+  // across tests.  Date.now() returns milliseconds; ensureFresh divides by
+  // 1000 to get seconds internally.
+
+  it('runs git fetch --all --prune when data is stale', () => {
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(100_000_000_000);
+    mockExecFileSync.mockReturnValue('' as any);
+
+    expect(ensureFresh()).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      expect.objectContaining({ timeout: 15_000 }),
+    );
+    spy.mockRestore();
+  });
+
+  it('skips fetch when called again within the default staleness window', () => {
+    // First call sets lastFetchTimestamp = 200_000_000
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(200_000_000_000);
+    mockExecFileSync.mockReturnValue('' as any);
+    ensureFresh();
+
+    // Second call 10s later — within the 30s default window
+    mockExecFileSync.mockClear();
+    spy.mockReturnValue(200_000_010_000);
+
+    expect(ensureFresh()).toBe(false);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('fetches again after the staleness window expires', () => {
+    // First call sets lastFetchTimestamp = 300_000_000
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(300_000_000_000);
+    mockExecFileSync.mockReturnValue('' as any);
+    ensureFresh();
+
+    // Second call 31s later — past the 30s default window
+    mockExecFileSync.mockClear();
+    spy.mockReturnValue(300_000_031_000);
+    mockExecFileSync.mockReturnValue('' as any);
+
+    expect(ensureFresh()).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      expect.objectContaining({ timeout: 15_000 }),
+    );
+    spy.mockRestore();
+  });
+
+  it('returns false when git fetch fails (e.g. no network)', () => {
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(400_000_000_000);
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('network error');
+    });
+
+    expect(ensureFresh()).toBe(false);
+    spy.mockRestore();
+  });
+
+  it('does not update timestamp on failure so the next call retries', () => {
+    // Successful fetch sets lastFetchTimestamp = 500_000_000
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(500_000_000_000);
+    mockExecFileSync.mockReturnValue('' as any);
+    ensureFresh();
+
+    // 31s later: fetch fails — timestamp should NOT update
+    spy.mockReturnValue(500_000_031_000);
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error('network error');
+    });
+    ensureFresh();
+
+    // 1s after failure: still stale relative to last *success* (32s > 30s)
+    mockExecFileSync.mockClear();
+    mockExecFileSync.mockReturnValue('' as any);
+    spy.mockReturnValue(500_000_032_000);
+
+    expect(ensureFresh()).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('respects a custom staleness threshold', () => {
+    // Successful fetch with 5s threshold sets lastFetchTimestamp = 600_000_000
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(600_000_000_000);
+    mockExecFileSync.mockReturnValue('' as any);
+    ensureFresh(5);
+
+    // 3s later — within the 5s custom window
+    mockExecFileSync.mockClear();
+    spy.mockReturnValue(600_000_003_000);
+    expect(ensureFresh(5)).toBe(false);
+    expect(mockExecFileSync).not.toHaveBeenCalled();
+
+    // 6s after original fetch — past the 5s custom window
+    spy.mockReturnValue(600_000_006_000);
+    mockExecFileSync.mockReturnValue('' as any);
+    expect(ensureFresh(5)).toBe(true);
+    expect(mockExecFileSync).toHaveBeenCalled();
+    spy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------
