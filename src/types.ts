@@ -30,10 +30,16 @@ export interface PendingChange {
 
 export type RiskLevel = 'safe' | 'caution' | 'conflict_likely';
 
+export interface MergeConflictInfo {
+  branch: string;
+  conflicting_files: string[];
+}
+
 export interface PathCheckResult {
   recent_authors: PathAuthor[];
   primary_owner: string | null;
   pending_changes: PendingChange[];
+  merge_conflicts: MergeConflictInfo[];
   locally_modified: boolean;
   risk: RiskLevel;
   risk_reason: string;

@@ -6,6 +6,7 @@ export type {
   PathAuthor,
   PendingChange,
   RiskLevel,
+  MergeConflictInfo,
   PathCheckResult,
   ExportMatch,
   ConflictEntry,

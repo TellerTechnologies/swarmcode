@@ -12,6 +12,7 @@ beforeEach(() => {
   mockGit.getCurrentBranch.mockReturnValue('main');
   mockGit.getActiveRemoteBranches.mockReturnValue([]);
   mockGit.getStatusForPath.mockReturnValue([]);
+  mockGit.getMergeTreeConflicts.mockReturnValue([]);
 });
 
 describe('checkPath', () => {
@@ -175,5 +176,43 @@ describe('checkPath', () => {
 
     expect(result.pending_changes).toHaveLength(1);
     expect(result.pending_changes[0].author).toBe('unknown');
+  });
+
+  it('detects merge-tree conflicts and sets risk to conflict_likely', () => {
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feature/other']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue([]);
+    mockGit.getMergeTreeConflicts.mockReturnValue(['src/foo.ts']);
+
+    const result = checkPath({ path: 'src/foo.ts' });
+
+    expect(result.merge_conflicts).toHaveLength(1);
+    expect(result.merge_conflicts[0].branch).toBe('origin/feature/other');
+    expect(result.merge_conflicts[0].conflicting_files).toEqual(['src/foo.ts']);
+    expect(result.risk).toBe('conflict_likely');
+    expect(result.risk_reason).toContain('merge conflict');
+  });
+
+  it('returns empty merge_conflicts when no conflicts detected', () => {
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feature/clean']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue([]);
+    mockGit.getMergeTreeConflicts.mockReturnValue([]);
+
+    const result = checkPath({ path: 'src/foo.ts' });
+
+    expect(result.merge_conflicts).toEqual([]);
+  });
+
+  it('merge_conflicts override pending_changes risk level', () => {
+    mockGit.getLog.mockReturnValue([]);
+    mockGit.getActiveRemoteBranches.mockReturnValue(['origin/feature/conflict-branch']);
+    mockGit.getFilesChangedOnBranch.mockReturnValue([]);
+    mockGit.getMergeTreeConflicts.mockReturnValue(['src/foo.ts']);
+
+    const result = checkPath({ path: 'src/foo.ts' });
+
+    // Even with 0 pending_changes (which would be "safe"), merge conflict takes precedence
+    expect(result.risk).toBe('conflict_likely');
   });
 });

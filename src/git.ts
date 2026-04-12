@@ -348,6 +348,38 @@ export function hasOpenPR(): boolean {
   }
 }
 
+export interface MergeConflict {
+  branch: string;
+  conflictingFiles: string[];
+}
+
+/**
+ * Run `git merge-tree` against another branch to detect if merging would produce conflicts.
+ * Returns conflicting file paths, or empty array if merge would be clean.
+ * Requires Git 2.38+.
+ */
+export function getMergeTreeConflicts(otherBranch: string): string[] {
+  try {
+    execFileSync('git', ['merge-tree', 'HEAD', otherBranch], EXEC_OPTS);
+    // Exit code 0 = clean merge, no conflicts
+    return [];
+  } catch (err: any) {
+    // Exit code 1 = conflicts detected
+    // The stdout contains the merged tree info, stderr may have conflict details
+    // Parse stdout for conflict markers — lines with "CONFLICT" contain file paths
+    const output = (err.stdout ?? '').toString();
+    const files: string[] = [];
+    for (const line of output.split('\n')) {
+      // Format: "CONFLICT (content): Merge conflict in <filepath>"
+      const match = line.match(/Merge conflict in (.+)/);
+      if (match) files.push(match[1].trim());
+      // Also: "CONFLICT (add/add): Merge conflict in <filepath>"
+      // Also: "Auto-merging <filepath>" lines are NOT conflicts
+    }
+    return files;
+  }
+}
+
 export function push(branch: string, setUpstream: boolean): PushResult {
   try {
     const args = setUpstream

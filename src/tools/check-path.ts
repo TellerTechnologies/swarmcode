@@ -1,4 +1,4 @@
-import type { PathCheckResult, PathAuthor, PendingChange, RiskLevel } from '../types.js';
+import type { PathCheckResult, PathAuthor, PendingChange, RiskLevel, MergeConflictInfo } from '../types.js';
 import * as git from '../git.js';
 
 export function checkPath(params: { path: string }): PathCheckResult {
@@ -59,6 +59,24 @@ export function checkPath(params: { path: string }): PathCheckResult {
     }
   }
 
+  // Check for actual merge conflicts using git merge-tree
+  const merge_conflicts: MergeConflictInfo[] = [];
+  for (const branch of remoteBranches) {
+    if (currentBranch && branch.endsWith(`/${currentBranch}`)) continue;
+
+    const conflictFiles = git.getMergeTreeConflicts(branch);
+    // Filter to files matching the target path
+    const matching = conflictFiles.filter(
+      f => f === params.path || f.startsWith(params.path + '/'),
+    );
+    if (matching.length > 0) {
+      merge_conflicts.push({
+        branch,
+        conflicting_files: matching,
+      });
+    }
+  }
+
   // Check local modifications
   const statusFiles = git.getStatusForPath(params.path);
   const locally_modified = statusFiles.length > 0;
@@ -67,7 +85,11 @@ export function checkPath(params: { path: string }): PathCheckResult {
   let risk: RiskLevel;
   let risk_reason: string;
 
-  if (pending_changes.length >= 2) {
+  if (merge_conflicts.length > 0) {
+    risk = 'conflict_likely';
+    const branches = merge_conflicts.map(c => c.branch).join(', ');
+    risk_reason = `${params.path} would produce merge conflicts with: ${branches}`;
+  } else if (pending_changes.length >= 2) {
     risk = 'conflict_likely';
     risk_reason = `${pending_changes.length} remote branches are modifying this path — merge conflicts are likely`;
   } else if (pending_changes.length === 1) {
@@ -82,6 +104,7 @@ export function checkPath(params: { path: string }): PathCheckResult {
     recent_authors,
     primary_owner,
     pending_changes,
+    merge_conflicts,
     locally_modified,
     risk,
     risk_reason,
