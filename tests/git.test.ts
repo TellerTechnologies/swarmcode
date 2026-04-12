@@ -45,6 +45,11 @@ describe('getRepoRoot', () => {
     });
     expect(getRepoRoot()).toBeNull();
   });
+
+  it('trims surrounding whitespace from output', () => {
+    mockExecFileSync.mockReturnValue('  /home/user/project  \n' as any);
+    expect(getRepoRoot()).toBe('/home/user/project');
+  });
 });
 
 // ---------------------------------------------------------------------------

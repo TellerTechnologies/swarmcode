@@ -34,6 +34,9 @@ export function ensureFresh(stalenessSeconds: number = DEFAULT_FETCH_STALENESS_S
 
 // Internal helpers
 
+// Execute a git command and return its trimmed stdout.
+// Returns an empty string on failure, so callers that only care about
+// "did we get output?" can treat '' as a falsy no-op without null checks.
 function run(args: string[]): string {
   try {
     return (execFileSync('git', args, EXEC_OPTS) as string).trim();
@@ -52,6 +55,10 @@ function runRaw(args: string[]): string {
   }
 }
 
+// Execute a git command and return its trimmed stdout, or null on failure.
+// Unlike run(), returning null lets callers distinguish "command failed"
+// from "command succeeded with empty output" — important for queries like
+// rev-parse where an empty result is semantically different from an error.
 function runOrNull(args: string[]): string | null {
   try {
     return (execFileSync('git', args, EXEC_OPTS) as string).trim();
