@@ -34,6 +34,9 @@ export function ensureFresh(stalenessSeconds: number = DEFAULT_FETCH_STALENESS_S
 
 // Internal helpers
 
+// Executes a git command synchronously and returns the trimmed stdout.
+// On any error (e.g. not a git repo, invalid args) returns an empty string
+// instead of throwing — callers can simply check `if (!output)`.
 function run(args: string[]): string {
   try {
     return (execFileSync('git', args, EXEC_OPTS) as string).trim();
@@ -52,6 +55,10 @@ function runRaw(args: string[]): string {
   }
 }
 
+// Like run(), but returns `null` instead of '' on failure. Use this when
+// callers need to distinguish "the command succeeded but produced empty
+// output" from "the command failed entirely" (e.g. getRepoRoot returning
+// null signals "not inside a git repo" rather than "repo root is empty").
 function runOrNull(args: string[]): string | null {
   try {
     return (execFileSync('git', args, EXEC_OPTS) as string).trim();
