@@ -355,6 +355,7 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
   const events = collector.getEvents();
   const agentMetrics = agents.map(agent => ({
     agentId: agent.id,
+    agentType: agent.agentType,
     commits: events.filter(e => e.agent === agent.id && e.type === 'git_commit').length,
     pushes: events.filter(e => e.agent === agent.id && e.type === 'git_push').length,
     issueIdentifier: agent.issueIdentifier,

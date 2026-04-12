@@ -100,6 +100,7 @@ export interface RunConfig {
 
 export interface AgentMetrics {
   agentId: string;
+  agentType?: string;
   commits: number;
   pushes: number;
   issueIdentifier: string;

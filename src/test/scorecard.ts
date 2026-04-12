@@ -69,16 +69,30 @@ export function formatScorecard(card: Scorecard): string {
   lines.push(`  Duplicate work:       ${card.duplicateWork}`);
   lines.push(`  Files touched by 2+:  ${card.filesOverlap.length}`);
 
+  const hasAgentTypes = card.agents.some(a => a.agentType);
+
   lines.push('');
   lines.push('  PER AGENT');
-  lines.push('  ┌──────────┬──────────┬──────────┬────────────┐');
-  lines.push('  │ Agent    │ Commits  │ Time     │ Issue      │');
-  lines.push('  ├──────────┼──────────┼──────────┼────────────┤');
-  for (const a of card.agents) {
-    const status = a.timedOut ? '⏱' : a.issueCompleted ? '✓' : '✗';
-    lines.push(`  │ ${a.agentId.padEnd(8)} │ ${String(a.commits).padEnd(8)} │ ${formatDuration(a.durationSeconds).padEnd(8)} │ ${a.issueIdentifier} ${status} │`);
+  if (hasAgentTypes) {
+    lines.push('  ┌──────────┬────────────────────┬──────────┬──────────┬────────────┐');
+    lines.push('  │ Agent    │ Type               │ Commits  │ Time     │ Issue      │');
+    lines.push('  ├──────────┼────────────────────┼──────────┼──────────┼────────────┤');
+    for (const a of card.agents) {
+      const status = a.timedOut ? '⏱' : a.issueCompleted ? '✓' : '✗';
+      const type = (a.agentType ?? 'default').padEnd(18);
+      lines.push(`  │ ${a.agentId.padEnd(8)} │ ${type} │ ${String(a.commits).padEnd(8)} │ ${formatDuration(a.durationSeconds).padEnd(8)} │ ${a.issueIdentifier} ${status} │`);
+    }
+    lines.push('  └──────────┴────────────────────┴──────────┴──────────┴────────────┘');
+  } else {
+    lines.push('  ┌──────────┬──────────┬──────────┬────────────┐');
+    lines.push('  │ Agent    │ Commits  │ Time     │ Issue      │');
+    lines.push('  ├──────────┼──────────┼──────────┼────────────┤');
+    for (const a of card.agents) {
+      const status = a.timedOut ? '⏱' : a.issueCompleted ? '✓' : '✗';
+      lines.push(`  │ ${a.agentId.padEnd(8)} │ ${String(a.commits).padEnd(8)} │ ${formatDuration(a.durationSeconds).padEnd(8)} │ ${a.issueIdentifier} ${status} │`);
+    }
+    lines.push('  └──────────┴──────────┴──────────┴────────────┘');
   }
-  lines.push('  └──────────┴──────────┴──────────┴────────────┘');
 
   lines.push('');
   lines.push(`  GRADE: ${card.grade}`);
