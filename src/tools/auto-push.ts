@@ -5,6 +5,7 @@ import { autoProgress, autoReview } from '../auto-linear.js';
 const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let reviewIntervalId: ReturnType<typeof setInterval> | null = null;
 let lastSha: string | null = null;
 let pushCount = 0;
 let currentInterval = 5;
@@ -33,16 +34,25 @@ function tick(): void {
         // Best-effort — don't block the push loop
       });
     }
-
-    // Auto-review: move issue to "In Review" if a PR is open
-    autoReview().catch(() => {
-      // Best-effort — don't block the push loop
-    });
   } else {
     console.error(`[swarmcode auto-push] push failed: ${result.error}`);
   }
 
   lastSha = sha;
+}
+
+/**
+ * Separate tick for review detection — runs independently of commit/push
+ * activity so that PR creation (which doesn't change HEAD) still triggers
+ * the "In Review" transition.
+ */
+function reviewTick(): void {
+  const branch = git.getCurrentBranch();
+  if (!branch || PROTECTED_BRANCHES.includes(branch)) return;
+
+  autoReview().catch(() => {
+    // Best-effort — don't block the review loop
+  });
 }
 
 export function enableAutoPush(opts: { interval?: number }): AutoPushResult {
@@ -78,6 +88,12 @@ export function enableAutoPush(opts: { interval?: number }): AutoPushResult {
 
   intervalId = setInterval(tick, currentInterval * 1000);
 
+  // Review polling runs on a longer interval (60s) — cheap check (gh pr view + Linear read)
+  // and decoupled from push activity so PR creation triggers "In Review" even without new commits
+  if (!reviewIntervalId) {
+    reviewIntervalId = setInterval(reviewTick, 60 * 1000);
+  }
+
   return {
     enabled: true,
     branch,
@@ -90,6 +106,10 @@ export function disableAutoPush(): AutoPushDisableResult {
   if (intervalId !== null) {
     clearInterval(intervalId);
     intervalId = null;
+  }
+  if (reviewIntervalId !== null) {
+    clearInterval(reviewIntervalId);
+    reviewIntervalId = null;
   }
 
   const result: AutoPushDisableResult = { enabled: false, pushes_made: pushCount };

@@ -115,11 +115,20 @@ export function createServer(): McpServer {
     async ({ since }) => {
       try {
         const data = checkAll({ since });
-        enableAutoPush({ interval: 30 });
+
+        let autoPushStatus: string;
+        try {
+          enableAutoPush({ interval: 30 });
+          autoPushStatus = 'enabled';
+        } catch (e: any) {
+          // Auto-push fails on protected branches — that's expected at session start.
+          // The agent can call enable_auto_push after checking out a feature branch.
+          autoPushStatus = `deferred (${e.message})`;
+        }
 
         const result: Record<string, unknown> = {
           ...data,
-          auto_push: 'enabled',
+          auto_push: autoPushStatus,
         };
 
         // Run Linear automations if configured
@@ -223,6 +232,24 @@ export function createServer(): McpServer {
       },
     },
     ({ since }) => json(getTeamActivity({ since })),
+  );
+
+  server.registerTool(
+    'enable_auto_push',
+    {
+      title: 'Enable Auto-Push',
+      description: 'Start automatic pushing on the current branch. Call this after checking out a feature branch if start_session deferred auto-push (e.g. because you were on main).',
+      inputSchema: {
+        interval: z.number().optional().describe('Push check interval in seconds (default: 30)'),
+      },
+    },
+    ({ interval }) => {
+      try {
+        return json(enableAutoPush({ interval: interval ?? 30 }));
+      } catch (e: any) {
+        return err(e.message);
+      }
+    },
   );
 
   server.registerTool(
