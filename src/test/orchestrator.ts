@@ -343,6 +343,38 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
     rmSync(join(repoRoot, '.swarmcode-test', config.runId), { recursive: true, force: true });
   } catch { /* ignore */ }
 
+  // Clean up parent .swarmcode-test dir if empty
+  try {
+    const testDir = join(repoRoot, '.swarmcode-test');
+    if (existsSync(testDir) && readdirSync(testDir).length === 0) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
+  } catch { /* ignore */ }
+
+  // Delete test branches (harness branches + agent-created branches)
+  const branchOutput = execFileSync('git', ['branch', '--list'], { ...EXEC_OPTS, cwd: repoRoot }).trim();
+  const testBranches = branchOutput.split('\n')
+    .map(b => b.trim().replace(/^\* /, ''))
+    .filter(b => b.startsWith('swarmcode-test') || b.includes('swarmcode-test'));
+  for (const branch of testBranches) {
+    try {
+      execFileSync('git', ['branch', '-D', branch], { ...EXEC_OPTS, cwd: repoRoot });
+    } catch { /* ignore */ }
+  }
+
+  // Also delete branches agents created via pick_issue (contain issue identifiers)
+  for (const id of issueIdentifiers) {
+    const idLower = id.toLowerCase();
+    const allBranches = branchOutput.split('\n')
+      .map(b => b.trim().replace(/^\* /, ''))
+      .filter(b => b.toLowerCase().includes(idLower));
+    for (const branch of allBranches) {
+      try {
+        execFileSync('git', ['branch', '-D', branch], { ...EXEC_OPTS, cwd: repoRoot });
+      } catch { /* ignore */ }
+    }
+  }
+
   await archiveTestIssues(issueIdentifiers);
 
   return scorecard;
