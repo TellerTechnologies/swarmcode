@@ -273,16 +273,77 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
   clearInterval(linearPollId);
   collector.stop();
 
-  const finalStatus = await pollLinearCompletion(issueIdentifiers, collector);
-  for (const agent of agents) {
-    agent.issueCompleted = finalStatus.get(agent.issueIdentifier) ?? false;
+  // Resolve actual issue→agent mapping from Linear state.
+  // Agents freely pick from the backlog, so the static mapping (agent-N → issue-N)
+  // may not match reality. Check which issues are actually completed.
+  const completedIssues: string[] = [];
+  for (const id of issueIdentifiers) {
+    try {
+      const issue = await linear.getIssue(id);
+      if (issue.statusType === 'completed') {
+        completedIssues.push(id);
+      }
+    } catch { /* ignore */ }
   }
 
+  // Update agent completion based on total issues completed, not per-agent mapping.
+  // We can't know exactly which agent did which issue without MCP interception (v2),
+  // but we CAN check: did agent-N's branch contain commits referencing an issue ID?
+  for (const agent of agents) {
+    // First check if the originally-assigned issue is done
+    if (completedIssues.includes(agent.issueIdentifier)) {
+      agent.issueCompleted = true;
+      continue;
+    }
+    // Otherwise, check if the agent completed a DIFFERENT test issue
+    // by scanning its branch commits for issue IDs
+    try {
+      const log = execFileSync('git', ['log', agent.branchName, '--format=%s', '--not', scenario.base_branch],
+        { ...EXEC_OPTS, cwd: repoRoot }).trim();
+      for (const completedId of completedIssues) {
+        if (log.toLowerCase().includes(completedId.toLowerCase())) {
+          // Agent worked on a different issue than expected — update the mapping
+          agent.issueIdentifier = completedId;
+          agent.issueCompleted = true;
+          break;
+        }
+      }
+    } catch { /* branch may not exist */ }
+  }
+
+  // Check if all test issues got completed (regardless of which agent did them)
+  const allIssuesDone = issueIdentifiers.every(id => completedIssues.includes(id));
+
   const totalDuration = Math.round((Date.now() - startTime) / 1000);
-  const issueDeduplication = new Set(agents.map(a => a.issueIdentifier)).size === agents.length;
+
+  // Deduplication: check that no two agents ended up with the same issue
+  const resolvedIssues = agents.map(a => a.issueIdentifier);
+  const issueDeduplication = new Set(resolvedIssues).size === agents.length;
 
   console.log('   Merging agent branches...');
   execFileSync('git', ['fetch', '--all'], { ...EXEC_OPTS, cwd: repoRoot });
+
+  // Resolve actual branches agents worked on.
+  // Agents may have created new branches via pick_issue (e.g. jared/tel-7-...)
+  // instead of committing to the harness-created worktree branch.
+  for (const agent of agents) {
+    try {
+      // Check if the harness branch has any commits ahead of base
+      const count = execFileSync('git', ['rev-list', '--count', `${scenario.base_branch}..${agent.branchName}`],
+        { ...EXEC_OPTS, cwd: repoRoot }).trim();
+      if (parseInt(count, 10) > 0) continue; // Agent committed on the harness branch
+
+      // No commits on harness branch — look for a branch containing the issue ID
+      const issueId = agent.issueIdentifier.toLowerCase();
+      const allBranches = execFileSync('git', ['branch', '--list'], { ...EXEC_OPTS, cwd: repoRoot }).trim()
+        .split('\n').map(b => b.trim().replace(/^\* /, ''));
+      const match = allBranches.find(b => b.toLowerCase().includes(issueId));
+      if (match) {
+        agent.branchName = match;
+      }
+    } catch { /* ignore */ }
+  }
+
   const mergeResults = mergeAgentBranches(repoRoot, testBranch, agents);
 
   const filesOverlap = detectFileOverlap(repoRoot, agents, scenario.base_branch);
