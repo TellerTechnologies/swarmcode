@@ -229,6 +229,14 @@ export interface PushResult {
  * Detects the main/default branch by checking remote then local branches.
  * Prefers `origin/main` over `origin/master`, falls back to local `main` or
  * `master`, and returns `'HEAD'` if none are found.
+ *
+ * @returns The name of the main branch (e.g. `'origin/main'`, `'master'`, or `'HEAD'`).
+ *
+ * @example
+ * ```ts
+ * const main = getMainBranch(); // 'origin/main'
+ * const commits = getBranchLog('feature', '7 days ago'); // uses getMainBranch() internally
+ * ```
  */
 export function getMainBranch(): string {
   const remote = run(['branch', '-r']);

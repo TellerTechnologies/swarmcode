@@ -18,6 +18,7 @@ import {
   getAllAuthors,
   getLastModifier,
   getStatusForPath,
+  getMainBranch,
 } from '../src/git.js';
 import * as git from '../src/git.js';
 
@@ -406,38 +407,55 @@ describe('getStatusForPath', () => {
 describe('getMainBranch', () => {
   it('returns origin/main when remote has origin/main', () => {
     mockExecFileSync.mockReturnValue('  origin/main\n  origin/develop\n' as any);
-    expect(git.getMainBranch()).toBe('origin/main');
+    expect(getMainBranch()).toBe('origin/main');
   });
 
   it('returns origin/master when remote has origin/master but not origin/main', () => {
     mockExecFileSync.mockReturnValueOnce('  origin/master\n  origin/develop\n' as any);
-    expect(git.getMainBranch()).toBe('origin/master');
+    expect(getMainBranch()).toBe('origin/master');
+  });
+
+  it('prefers origin/main over origin/master when both exist', () => {
+    mockExecFileSync.mockReturnValue('  origin/main\n  origin/master\n  origin/develop\n' as any);
+    expect(getMainBranch()).toBe('origin/main');
   });
 
   it('falls back to local main when no remote branches match', () => {
     mockExecFileSync
       .mockReturnValueOnce('  origin/develop\n' as any)  // git branch -r (no main/master)
       .mockReturnValueOnce('* main\n  feature-x\n' as any);  // git branch (local)
-    expect(git.getMainBranch()).toBe('main');
+    expect(getMainBranch()).toBe('main');
   });
 
   it('falls back to local master when no remote or local main', () => {
     mockExecFileSync
       .mockReturnValueOnce('  origin/develop\n' as any)  // git branch -r
       .mockReturnValueOnce('* master\n  feature-x\n' as any);  // git branch
-    expect(git.getMainBranch()).toBe('master');
+    expect(getMainBranch()).toBe('master');
   });
 
   it('returns HEAD when no main or master branch exists', () => {
     mockExecFileSync
       .mockReturnValueOnce('  origin/develop\n' as any)  // git branch -r
       .mockReturnValueOnce('* feature-x\n  develop\n' as any);  // git branch
-    expect(git.getMainBranch()).toBe('HEAD');
+    expect(getMainBranch()).toBe('HEAD');
   });
 
   it('returns HEAD when all git commands fail', () => {
     mockExecFileSync.mockImplementation(() => { throw new Error('not a repo'); });
-    expect(git.getMainBranch()).toBe('HEAD');
+    expect(getMainBranch()).toBe('HEAD');
+  });
+
+  it('checks remote branches first before local', () => {
+    mockExecFileSync.mockReturnValue('  origin/main\n' as any);
+    getMainBranch();
+    // Should only call git branch -r once (found match, no need for local check)
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['branch', '-r'],
+      expect.objectContaining({ encoding: 'utf-8' }),
+    );
   });
 });
 
