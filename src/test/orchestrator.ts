@@ -336,7 +336,7 @@ export async function runScenario(scenarioPath: string): Promise<Scorecard> {
       // No commits on harness branch — look for a branch containing the issue ID
       const issueId = agent.issueIdentifier.toLowerCase();
       const allBranches = execFileSync('git', ['branch', '--list'], { ...EXEC_OPTS, cwd: repoRoot }).trim()
-        .split('\n').map(b => b.trim().replace(/^\* /, ''));
+        .split('\n').map(b => b.trim().replace(/^[*+] /, ''));
       const match = allBranches.find(b => b.toLowerCase().includes(issueId));
       if (match) {
         agent.branchName = match;
