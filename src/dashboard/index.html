@@ -708,7 +708,7 @@ function renderMarkdown(md) {
     .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
       `<pre><code>${escHtml(code.trim())}</code></pre>`)
     // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${escHtml(code)}</code>`)
     // Headers — h2s become collapsible sections
     .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
@@ -760,7 +760,7 @@ function renderMarkdown(md) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function timeAgo(ts) {
@@ -848,7 +848,7 @@ function renderActivity(activity, linear, statusChanges) {
         actor: dev.name,
         text: isMerge
           ? `merged into main — "${escHtml(commit.message.slice(0, 60))}"`
-          : `pushed <code>${commit.hash}</code> — "${escHtml(commit.message.slice(0, 60))}"`,
+          : `pushed <code>${escHtml(commit.hash)}</code> — "${escHtml(commit.message.slice(0, 60))}"`,
         timestamp: commit.timestamp,
       });
     }
@@ -863,8 +863,11 @@ function renderActivity(activity, linear, statusChanges) {
     });
   }
 
-  events.sort((a, b) => b.timestamp - a.timestamp);
-  const recentEvents = events.slice(0, 25);
+  // Filter to last 48 hours, sort newest first, cap at 25
+  const cutoff48h = Date.now() / 1000 - 48 * 3600;
+  const filtered = events.filter(e => e.timestamp > cutoff48h);
+  filtered.sort((a, b) => b.timestamp - a.timestamp);
+  const recentEvents = filtered.slice(0, 25);
 
   const iconMap = {
     commit: '<span class="event-icon commit">&#9679;</span>',
