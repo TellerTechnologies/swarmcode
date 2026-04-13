@@ -29,6 +29,7 @@ export interface LinearIssue {
   dueDate: string | null;
   estimate: number | null;
   parentId: string | null;
+  updatedAt: string;
 }
 
 export interface LinearIssueDetail extends LinearIssue {
@@ -196,6 +197,7 @@ async function toLinearIssue(issue: Awaited<ReturnType<typeof lookupIssue>>): Pr
     dueDate: issue.dueDate ?? null,
     estimate: issue.estimate ?? null,
     parentId: issue.parentId ?? null,
+    updatedAt: issue.updatedAt?.toISOString() ?? '',
   };
 }
 

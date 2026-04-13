@@ -982,7 +982,9 @@ function renderKanban(data) {
   const sorted = [...data.issues].sort((a, b) => {
     const pa = a.priority || 5;
     const pb = b.priority || 5;
-    return pa - pb;
+    if (pa !== pb) return pa - pb;
+    // Secondary sort: most recently updated first
+    return (b.updatedAt || '').localeCompare(a.updatedAt || '');
   });
 
   const columns = {
