@@ -25,7 +25,7 @@ export interface LinearIssue {
   branchName: string;
   url: string;
   labels: string[];
-  labelDetails: Array<{ name: string; color: string }>;  // NEW
+  labelDetails: Array<{ name: string; color: string }>;
   dueDate: string | null;
   estimate: number | null;
   parentId: string | null;
@@ -418,12 +418,6 @@ export async function getLinearDataForDashboard(overrideTeamKey?: string): Promi
     openFilter.team = { key: { eq: teamKey } };
   }
 
-  const openConn = await client.issues({
-    filter: openFilter as never,
-    first: 50,
-    orderBy: 'updatedAt' as never,
-  });
-
   // Recently completed issues (last 7 days)
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const completedFilter: Record<string, unknown> = {
@@ -434,11 +428,10 @@ export async function getLinearDataForDashboard(overrideTeamKey?: string): Promi
     completedFilter.team = { key: { eq: teamKey } };
   }
 
-  const completedConn = await client.issues({
-    filter: completedFilter as never,
-    first: 20,
-    orderBy: 'updatedAt' as never,
-  });
+  const [openConn, completedConn] = await Promise.all([
+    client.issues({ filter: openFilter as never, first: 50, orderBy: 'updatedAt' as never }),
+    client.issues({ filter: completedFilter as never, first: 20, orderBy: 'updatedAt' as never }),
+  ]);
 
   const allIssues = [...openConn.nodes, ...completedConn.nodes];
   const issues = await Promise.all(allIssues.map(toLinearIssue));
