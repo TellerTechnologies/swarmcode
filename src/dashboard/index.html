@@ -510,80 +510,130 @@
   #context {
     grid-column: 1 / -1;
     grid-row: 5;
-    max-height: 500px;
+    max-height: 600px;
   }
 
   .context-tabs {
     display: flex;
-    gap: 4px;
+    gap: 2px;
     margin-bottom: 16px;
     flex-wrap: wrap;
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 4px;
+    border: 1px solid var(--border);
   }
 
   .context-tab {
     font-family: var(--mono);
     font-size: 12px;
-    padding: 4px 12px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: var(--surface);
+    padding: 6px 14px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
-  .context-tab:hover { border-color: var(--text-dim); }
+  .context-tab:hover { background: var(--bg); color: var(--text); }
   .context-tab.active {
     background: var(--blue);
     color: #fff;
-    border-color: var(--blue);
+    font-weight: 600;
   }
 
   .context-content {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px 24px;
+    padding: 24px 32px;
     font-size: 14px;
-    line-height: 1.7;
+    line-height: 1.8;
     overflow: auto;
-    max-height: 400px;
+    max-height: 450px;
   }
 
-  /* Markdown rendering */
-  .context-content h1 { font-size: 20px; margin: 16px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-  .context-content h2 { font-size: 17px; margin: 14px 0 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-  .context-content h3 { font-size: 15px; margin: 12px 0 4px; }
+  .context-content h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 20px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+  }
+  .context-content h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 18px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .context-content h3 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
   .context-content h1:first-child, .context-content h2:first-child { margin-top: 0; }
-  .context-content p { margin: 8px 0; }
-  .context-content ul, .context-content ol { margin: 8px 0; padding-left: 24px; }
-  .context-content li { margin: 2px 0; }
+  .context-content p { margin: 10px 0; }
+  .context-content ul, .context-content ol { margin: 10px 0; padding-left: 28px; }
+  .context-content li { margin: 4px 0; }
   .context-content code {
     font-family: var(--mono);
     font-size: 13px;
     background: var(--bg);
-    padding: 2px 6px;
-    border-radius: 3px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
   }
   .context-content pre {
     background: var(--bg);
-    padding: 12px 16px;
-    border-radius: 6px;
+    padding: 16px 20px;
+    border-radius: 8px;
     overflow-x: auto;
-    margin: 8px 0;
+    margin: 12px 0;
+    border: 1px solid var(--border);
   }
-  .context-content pre code { background: none; padding: 0; }
+  .context-content pre code { background: none; padding: 0; border: none; }
   .context-content a { color: var(--blue); text-decoration: none; }
   .context-content a:hover { text-decoration: underline; }
-  .context-content table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+  .context-content table { border-collapse: collapse; margin: 12px 0; width: 100%; }
   .context-content th, .context-content td {
     border: 1px solid var(--border);
-    padding: 6px 12px;
+    padding: 8px 14px;
     text-align: left;
     font-size: 13px;
   }
   .context-content th { background: var(--bg); font-weight: 600; }
   .context-content input[type="checkbox"] { margin-right: 6px; }
+
+  .context-content details {
+    margin: 12px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .context-content details summary {
+    padding: 10px 16px;
+    background: var(--bg);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 16px;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .context-content details summary::before {
+    content: '▶';
+    font-size: 10px;
+    transition: transform 0.15s;
+  }
+
+  .context-content details[open] summary::before {
+    transform: rotate(90deg);
+  }
+
+  .context-content details > :not(summary) {
+    padding: 0 16px;
+  }
 
   .empty-state {
     color: var(--text-muted);
@@ -659,10 +709,10 @@ function renderMarkdown(md) {
       `<pre><code>${escHtml(code.trim())}</code></pre>`)
     // Inline code
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Headers
+    // Headers — h2s become collapsible sections
     .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^## (.+)$/gm, '<!--H2_SPLIT--><details open><summary>$1</summary>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     // Bold & italic
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -686,9 +736,19 @@ function renderMarkdown(md) {
     // Line breaks
     .replace(/\n/g, '<br>');
 
+  // Close open details sections
+  const splitParts = html.split('<!--H2_SPLIT-->');
+  if (splitParts.length > 1) {
+    html = splitParts[0];
+    for (let i = 1; i < splitParts.length; i++) {
+      if (i > 1) html += '</details>';
+      html += splitParts[i];
+    }
+    html += '</details>';
+  }
+
   // Wrap lists
   html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  // Clean up nested ul
   html = html.replace(/<\/ul>\s*<ul>/g, '');
   // Wrap tables
   html = html.replace(/(<tr>[\s\S]*?<\/tr>)/g, '<table>$1</table>');
