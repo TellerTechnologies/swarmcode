@@ -710,6 +710,10 @@
 <!-- Simple markdown renderer (no external deps) -->
 <script>
 function renderMarkdown(md) {
+  // Collapse H2 sections by default for long docs (>50 lines)
+  const isLong = md.split('\n').length > 50;
+  const detailsTag = isLong ? '<details>' : '<details open>';
+
   let html = md
     // Code blocks
     .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
@@ -719,7 +723,7 @@ function renderMarkdown(md) {
     // Headers — h2s become collapsible sections
     .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<!--H2_SPLIT--><details open><summary>$1</summary>')
+    .replace(/^## (.+)$/gm, `<!--H2_SPLIT-->${detailsTag}<summary>$1</summary>`)
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     // Bold & italic
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -808,7 +812,7 @@ function getPresenceStatus(dev, linearIssues) {
   return { status: 'offline', issue: null };
 }
 
-function renderActivity(activity, linear, statusChanges) {
+function renderActivity(activity, linear, statusChanges, newBranches) {
   const issues = (linear && linear.issues) ? linear.issues : [];
   const peopleEl = document.getElementById('peopleGrid');
   const feedEl = document.getElementById('eventFeed');
@@ -867,6 +871,15 @@ function renderActivity(activity, linear, statusChanges) {
       actor: change.actor || 'Someone',
       text: `<strong>${escHtml(change.issueIdentifier)}</strong> moved to <strong>${escHtml(change.toStatus)}</strong>`,
       timestamp: change.timestamp,
+    });
+  }
+
+  for (const branch of (newBranches || [])) {
+    events.push({
+      type: 'branch',
+      actor: branch.author,
+      text: `created branch <code>${escHtml(branch.name)}</code>`,
+      timestamp: branch.timestamp,
     });
   }
 
@@ -1058,7 +1071,7 @@ function render(data) {
     'Updated ' + new Date(data.timestamp).toLocaleTimeString();
 
   renderKanban(data.linear);
-  renderActivity(data.activity, data.linear, data.statusChanges);
+  renderActivity(data.activity, data.linear, data.statusChanges, data.newBranches);
   renderConflicts(data.conflicts);
   renderContext(data.context);
 }

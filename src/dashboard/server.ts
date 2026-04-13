@@ -20,6 +20,12 @@ export interface DashboardAuthor {
   recent_commits: Array<{ message: string; timestamp: number; hash: string }>;
 }
 
+export interface NewBranch {
+  name: string;
+  author: string;
+  timestamp: number;
+}
+
 export interface DashboardData {
   activity: DashboardAuthor[];
   conflicts: ConflictReport;
@@ -27,6 +33,7 @@ export interface DashboardData {
   linear: LinearData | null;
   teams: LinearTeam[];
   statusChanges: StatusChange[];
+  newBranches: NewBranch[];
   repo: string;
   timestamp: number;
 }
@@ -112,6 +119,41 @@ let cachedLinear: LinearData | null = null;
 let linearFetchedAt = 0;
 const LINEAR_STALENESS_SECS = 60; // refresh Linear every 60s
 
+// Track branches between ticks for creation detection
+let previousBranches = new Set<string>();
+
+function detectNewBranches(activity: DashboardAuthor[]): NewBranch[] {
+  const currentBranches = new Set<string>();
+  const branchAuthorMap = new Map<string, { author: string; lastActive: number }>();
+
+  for (const dev of activity) {
+    for (const branch of dev.active_branches) {
+      const short = branch.replace(/^origin\//, '');
+      currentBranches.add(short);
+      branchAuthorMap.set(short, { author: dev.name, lastActive: dev.last_active });
+    }
+  }
+
+  const newBranches: NewBranch[] = [];
+
+  // Skip first tick (everything would appear as "new")
+  if (previousBranches.size > 0) {
+    for (const branch of currentBranches) {
+      if (!previousBranches.has(branch)) {
+        const info = branchAuthorMap.get(branch);
+        newBranches.push({
+          name: branch,
+          author: info?.author ?? 'unknown',
+          timestamp: Math.floor(Date.now() / 1000),
+        });
+      }
+    }
+  }
+
+  previousBranches = currentBranches;
+  return newBranches;
+}
+
 // Track Linear issue statuses between ticks for change detection
 let previousStatuses = new Map<string, string>();
 
@@ -191,13 +233,16 @@ async function getAllData(teamKey?: string): Promise<DashboardData> {
   const linear = await fetchLinearIfNeeded(teamKey);
   const teams = await fetchTeamsIfNeeded();
 
+  const activity = getDashboardActivity();
+
   return {
-    activity: getDashboardActivity(),
+    activity,
     conflicts: checkConflicts(),
     context: getProjectContext({}),
     linear,
     teams,
     statusChanges: [],
+    newBranches: [],
     repo,
     timestamp: Date.now(),
   };
@@ -240,12 +285,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, html: st
 
     const initial = await getAllData(teamKey);
     initial.statusChanges = initial.linear ? detectStatusChanges(initial.linear.issues ?? []) : [];
+    initial.newBranches = detectNewBranches(initial.activity);
     res.write(`data: ${JSON.stringify(initial)}\n\n`);
 
     const interval = setInterval(async () => {
       try {
         const data = await getAllData(teamKey);
         data.statusChanges = detectStatusChanges(data.linear?.issues ?? []);
+        data.newBranches = detectNewBranches(data.activity);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
       } catch {
         clearInterval(interval);
