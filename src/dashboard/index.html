@@ -76,6 +76,27 @@
     color: var(--text-muted);
   }
 
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .team-select {
+    font-family: var(--font);
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .team-select:hover { border-color: var(--text-dim); }
+  .team-select:focus { border-color: var(--blue); }
+
   /* Grid layout */
   .grid {
     display: grid;
@@ -656,7 +677,12 @@
     <span class="status-dot" id="statusDot"></span>
     <span id="repoName">swarmcode</span>
   </h1>
-  <span class="header-meta" id="lastUpdate">Connecting...</span>
+  <div class="header-right">
+    <select class="team-select" id="teamSelect" style="display:none">
+      <option value="">All Teams</option>
+    </select>
+    <span class="header-meta" id="lastUpdate">Connecting...</span>
+  </div>
 </header>
 
 <div class="grid">
@@ -1013,14 +1039,44 @@ function render(data) {
   renderContext(data.context);
 }
 
+let currentEventSource = null;
+
+function getSelectedTeam() {
+  return localStorage.getItem('swarmcode-dashboard-team') || '';
+}
+
+function populateTeams(teams) {
+  const select = document.getElementById('teamSelect');
+  if (!teams || teams.length === 0) {
+    select.style.display = 'none';
+    return;
+  }
+
+  select.style.display = '';
+  const saved = getSelectedTeam();
+
+  // Keep "All Teams" option, replace the rest
+  select.innerHTML = '<option value="">All Teams</option>' +
+    teams.map(t => `<option value="${escHtml(t.key)}" ${t.key === saved ? 'selected' : ''}>${escHtml(t.name)} (${escHtml(t.key)})</option>`).join('');
+}
+
 function connect() {
+  if (currentEventSource) {
+    currentEventSource.close();
+  }
+
   const dot = document.getElementById('statusDot');
-  const es = new EventSource('/events');
+  const team = getSelectedTeam();
+  const url = team ? `/events?team=${encodeURIComponent(team)}` : '/events';
+  const es = new EventSource(url);
+  currentEventSource = es;
 
   es.onmessage = (event) => {
     dot.classList.remove('disconnected');
     try {
-      render(JSON.parse(event.data));
+      const data = JSON.parse(event.data);
+      populateTeams(data.teams);
+      render(data);
     } catch (e) {
       console.error('Failed to parse SSE data:', e);
     }
@@ -1031,6 +1087,12 @@ function connect() {
     document.getElementById('lastUpdate').textContent = 'Reconnecting...';
   };
 }
+
+document.getElementById('teamSelect').addEventListener('change', (e) => {
+  const value = e.target.value;
+  localStorage.setItem('swarmcode-dashboard-team', value);
+  connect(); // reconnect SSE with new team param
+});
 
 connect();
 </script>
