@@ -25,6 +25,7 @@ export interface LinearIssue {
   branchName: string;
   url: string;
   labels: string[];
+  labelDetails: Array<{ name: string; color: string }>;  // NEW
   dueDate: string | null;
   estimate: number | null;
   parentId: string | null;
@@ -191,6 +192,7 @@ async function toLinearIssue(issue: Awaited<ReturnType<typeof lookupIssue>>): Pr
     branchName: issue.branchName ?? '',
     url: issue.url ?? '',
     labels: labelsConn.nodes.map(l => l.name),
+    labelDetails: labelsConn.nodes.map(l => ({ name: l.name, color: l.color })),
     dueDate: issue.dueDate ?? null,
     estimate: issue.estimate ?? null,
     parentId: issue.parentId ?? null,
@@ -382,6 +384,64 @@ export async function getLinearData(overrideTeamKey?: string): Promise<LinearDat
   });
 
   const issues = await Promise.all(issuesConn.nodes.map(toLinearIssue));
+
+  // Fetch active cycle if team is specified
+  let cycle: LinearCycle | null = null;
+  if (teamKey) {
+    try {
+      const teams = await getTeams();
+      const team = teams.find(t => t.key === teamKey);
+      if (team) {
+        const cycles = await getCycles(team.id);
+        cycle = cycles.active;
+      }
+    } catch {
+      // Cycle fetch is optional
+    }
+  }
+
+  return { issues, cycle, team: teamKey };
+}
+
+/** Fetch issues for dashboard — includes recently completed (last 7 days). */
+export async function getLinearDataForDashboard(overrideTeamKey?: string): Promise<LinearData | null> {
+  if (!process.env.SWARMCODE_LINEAR_API_KEY) return null;
+
+  const client = getClient();
+  const teamKey = overrideTeamKey ?? process.env.SWARMCODE_LINEAR_TEAM ?? null;
+
+  // Open issues
+  const openFilter: Record<string, unknown> = {
+    state: { type: { in: ['triage', 'backlog', 'unstarted', 'started'] } },
+  };
+  if (teamKey) {
+    openFilter.team = { key: { eq: teamKey } };
+  }
+
+  const openConn = await client.issues({
+    filter: openFilter as never,
+    first: 50,
+    orderBy: 'updatedAt' as never,
+  });
+
+  // Recently completed issues (last 7 days)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const completedFilter: Record<string, unknown> = {
+    state: { type: { eq: 'completed' } },
+    completedAt: { gte: sevenDaysAgo },
+  };
+  if (teamKey) {
+    completedFilter.team = { key: { eq: teamKey } };
+  }
+
+  const completedConn = await client.issues({
+    filter: completedFilter as never,
+    first: 20,
+    orderBy: 'updatedAt' as never,
+  });
+
+  const allIssues = [...openConn.nodes, ...completedConn.nodes];
+  const issues = await Promise.all(allIssues.map(toLinearIssue));
 
   // Fetch active cycle if team is specified
   let cycle: LinearCycle | null = null;
