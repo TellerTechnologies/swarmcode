@@ -109,3 +109,12 @@ export interface CheckAllResult {
   project_context: ProjectContextResult;
   conflicts: ConflictReport;
 }
+
+export interface StatusChange {
+  issueIdentifier: string;
+  issueTitle: string;
+  fromStatus: string;
+  toStatus: string;
+  actor: string | null;
+  timestamp: number;
+}

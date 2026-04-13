@@ -5,8 +5,8 @@ import { dirname, join } from 'node:path';
 import * as git from '../git.js';
 import { checkConflicts } from '../tools/check-conflicts.js';
 import { getProjectContext } from '../tools/get-project-context.js';
-import { getLinearData, isConfigured as linearConfigured, type LinearData } from '../linear.js';
-import type { ConflictReport, ProjectContextResult, GitCommit } from '../types.js';
+import { getLinearDataForDashboard, getTeams, isConfigured as linearConfigured, type LinearData, type LinearTeam } from '../linear.js';
+import type { ConflictReport, ProjectContextResult, GitCommit, StatusChange } from '../types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,22 +20,13 @@ export interface DashboardAuthor {
   recent_commits: Array<{ message: string; timestamp: number; hash: string }>;
 }
 
-export interface BranchTimelineEntry {
-  name: string;
-  author: string;
-  commits: Array<{ hash: string; message: string; timestamp: number }>;
-  ahead: number;
-  behind: number;
-  last_active: number;
-  is_current: boolean;
-}
-
 export interface DashboardData {
   activity: DashboardAuthor[];
   conflicts: ConflictReport;
-  branches: BranchTimelineEntry[];
   context: ProjectContextResult;
   linear: LinearData | null;
+  teams: LinearTeam[];
+  statusChanges: StatusChange[];
   repo: string;
   timestamp: number;
 }
@@ -116,91 +107,94 @@ function getDashboardActivity(): DashboardAuthor[] {
   return results;
 }
 
-function getBranchTimeline(): BranchTimelineEntry[] {
-  const currentBranch = git.getCurrentBranch();
-  const mainBranch = git.getMainBranch();
-  const remoteBranches = git.getActiveRemoteBranches();
-
-  const entries: BranchTimelineEntry[] = [];
-
-  const mainShort = mainBranch.replace(/^origin\//, '');
-
-  for (const branch of remoteBranches.slice(0, 30)) {
-    // Skip HEAD pointer and main branch (we compare against it)
-    if (branch.includes('->')) continue;
-    const shortName = branch.replace(/^origin\//, '');
-    if (shortName === mainShort) continue;
-
-    const author = git.getBranchAuthor(branch) ?? 'unknown';
-    const commits = git.getBranchLog(branch, '48h');
-    const { ahead, behind } = git.getBranchAheadBehind(branch, mainBranch);
-
-    // Skip branches with no activity and no divergence
-    if (commits.length === 0 && ahead === 0) continue;
-
-    const last_active = commits.length > 0
-      ? Math.max(...commits.map((c) => c.timestamp))
-      : 0;
-
-    const is_current = shortName === currentBranch;
-
-    entries.push({
-      name: shortName,
-      author,
-      commits: commits.slice(0, 50).map((c) => ({
-        hash: c.hash.slice(0, 7),
-        message: c.message,
-        timestamp: c.timestamp,
-      })),
-      ahead,
-      behind,
-      last_active,
-      is_current,
-    });
-  }
-
-  // Sort by last_active descending, then by name
-  entries.sort((a, b) => b.last_active - a.last_active || a.name.localeCompare(b.name));
-
-  return entries;
-}
-
 // Cache Linear data separately (API call is slower than git)
 let cachedLinear: LinearData | null = null;
 let linearFetchedAt = 0;
 const LINEAR_STALENESS_SECS = 60; // refresh Linear every 60s
 
-async function fetchLinearIfNeeded(): Promise<LinearData | null> {
+// Track Linear issue statuses between ticks for change detection
+let previousStatuses = new Map<string, string>();
+
+function detectStatusChanges(issues: LinearData['issues']): StatusChange[] {
+  const changes: StatusChange[] = [];
+  const currentStatuses = new Map<string, string>();
+
+  for (const issue of issues) {
+    currentStatuses.set(issue.id, issue.status);
+
+    const prev = previousStatuses.get(issue.id);
+    if (prev && prev !== issue.status) {
+      changes.push({
+        issueIdentifier: issue.identifier,
+        issueTitle: issue.title,
+        fromStatus: prev,
+        toStatus: issue.status,
+        actor: issue.assignee,
+        timestamp: Math.floor(Date.now() / 1000),
+      });
+    }
+  }
+
+  previousStatuses = currentStatuses;
+  return changes;
+}
+
+let cachedLinearTeam: string | undefined;
+
+async function fetchLinearIfNeeded(teamKey?: string): Promise<LinearData | null> {
   if (!linearConfigured()) return null;
 
   const now = Date.now() / 1000;
-  if (now - linearFetchedAt < LINEAR_STALENESS_SECS) return cachedLinear;
+  const teamChanged = teamKey !== cachedLinearTeam;
+  if (!teamChanged && now - linearFetchedAt < LINEAR_STALENESS_SECS) return cachedLinear;
 
   try {
-    cachedLinear = await getLinearData();
+    cachedLinear = await getLinearDataForDashboard(teamKey);
+    cachedLinearTeam = teamKey;
     linearFetchedAt = now;
   } catch (err: any) {
     console.error(`[swarmcode] Linear fetch failed: ${err.message}`);
-    // Keep stale cache if we have it
   }
 
   return cachedLinear;
 }
 
-async function getAllData(): Promise<DashboardData> {
+let cachedTeams: LinearTeam[] = [];
+let teamsFetchedAt = 0;
+
+async function fetchTeamsIfNeeded(): Promise<LinearTeam[]> {
+  if (!linearConfigured()) return [];
+
+  const now = Date.now() / 1000;
+  if (now - teamsFetchedAt < 300) return cachedTeams; // refresh every 5 min
+
+  try {
+    cachedTeams = await getTeams();
+    teamsFetchedAt = now;
+  } catch (err: any) {
+    console.error(`[swarmcode] Teams fetch failed: ${err.message}`);
+  }
+
+  return cachedTeams;
+}
+
+async function getAllData(teamKey?: string): Promise<DashboardData> {
   git.ensureFresh();
 
   const repoRoot = git.getRepoRoot() ?? process.cwd();
   const repo = repoRoot.split('/').pop() ?? 'unknown';
 
-  const linear = await fetchLinearIfNeeded();
+  const linear = await fetchLinearIfNeeded(teamKey);
+  const teams = await fetchTeamsIfNeeded();
+  const statusChanges = linear ? detectStatusChanges(linear.issues) : [];
 
   return {
     activity: getDashboardActivity(),
     conflicts: checkConflicts(),
-    branches: getBranchTimeline(),
     context: getProjectContext({}),
     linear,
+    teams,
+    statusChanges,
     repo,
     timestamp: Date.now(),
   };
@@ -223,12 +217,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, html: st
     return;
   }
 
-  if (url === '/api/all') {
-    sendJson(res, await getAllData());
+  if (url.startsWith('/api/all')) {
+    const params = new URL(url, 'http://localhost').searchParams;
+    const teamKey = params.get('team') || undefined;
+    sendJson(res, await getAllData(teamKey));
     return;
   }
 
-  if (url === '/events') {
+  if (url.startsWith('/events')) {
+    const params = new URL(url, 'http://localhost').searchParams;
+    const teamKey = params.get('team') || undefined;
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -236,14 +235,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, html: st
       'Access-Control-Allow-Origin': '*',
     });
 
-    // Send initial data
-    const initial = await getAllData();
+    const initial = await getAllData(teamKey);
     res.write(`data: ${JSON.stringify(initial)}\n\n`);
 
-    // Push updates every 30 seconds
     const interval = setInterval(async () => {
       try {
-        const data = await getAllData();
+        const data = await getAllData(teamKey);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
       } catch {
         clearInterval(interval);
