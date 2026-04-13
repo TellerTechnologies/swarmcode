@@ -148,6 +148,10 @@ async function fetchLinearIfNeeded(teamKey?: string): Promise<LinearData | null>
   const teamChanged = teamKey !== cachedLinearTeam;
   if (!teamChanged && now - linearFetchedAt < LINEAR_STALENESS_SECS) return cachedLinear;
 
+  if (teamChanged) {
+    previousStatuses = new Map();
+  }
+
   try {
     cachedLinear = await getLinearDataForDashboard(teamKey);
     cachedLinearTeam = teamKey;
@@ -186,7 +190,6 @@ async function getAllData(teamKey?: string): Promise<DashboardData> {
 
   const linear = await fetchLinearIfNeeded(teamKey);
   const teams = await fetchTeamsIfNeeded();
-  const statusChanges = linear ? detectStatusChanges(linear.issues) : [];
 
   return {
     activity: getDashboardActivity(),
@@ -194,7 +197,7 @@ async function getAllData(teamKey?: string): Promise<DashboardData> {
     context: getProjectContext({}),
     linear,
     teams,
-    statusChanges,
+    statusChanges: [],
     repo,
     timestamp: Date.now(),
   };
@@ -217,14 +220,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, html: st
     return;
   }
 
-  if (url.startsWith('/api/all')) {
+  if (url === '/api/all' || url.startsWith('/api/all?')) {
     const params = new URL(url, 'http://localhost').searchParams;
     const teamKey = params.get('team') || undefined;
     sendJson(res, await getAllData(teamKey));
     return;
   }
 
-  if (url.startsWith('/events')) {
+  if (url === '/events' || url.startsWith('/events?')) {
     const params = new URL(url, 'http://localhost').searchParams;
     const teamKey = params.get('team') || undefined;
 
@@ -236,11 +239,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, html: st
     });
 
     const initial = await getAllData(teamKey);
+    initial.statusChanges = initial.linear ? detectStatusChanges(initial.linear.issues ?? []) : [];
     res.write(`data: ${JSON.stringify(initial)}\n\n`);
 
     const interval = setInterval(async () => {
       try {
         const data = await getAllData(teamKey);
+        data.statusChanges = detectStatusChanges(data.linear?.issues ?? []);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
       } catch {
         clearInterval(interval);
