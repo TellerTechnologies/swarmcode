@@ -135,107 +135,133 @@
   }
 
   /* Panel: Team Activity */
-  #activity { grid-column: 1 / -1; grid-row: 3; }
+  #activity {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
 
-  .dev-card {
-    padding: 12px 16px;
+  .activity-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 16px 0 8px;
+  }
+
+  .activity-section-title:first-of-type { margin-top: 0; }
+
+  .people-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .person-card {
+    padding: 10px 14px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    margin-bottom: 10px;
   }
 
-  .dev-card:hover { border-color: var(--text-dim); }
-
-  .dev-header {
+  .person-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
-  .dev-name {
+  .person-name {
     font-weight: 600;
-    font-size: 15px;
+    font-size: 14px;
   }
 
-  .dev-branch {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--blue);
-    background: rgba(88, 166, 255, 0.1);
-    padding: 2px 8px;
-    border-radius: 4px;
+  .person-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
   }
 
-  .dev-time {
-    font-size: 12px;
-    color: var(--text-muted);
+  .person-status.active {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
   }
 
-  .dev-files {
-    margin-top: 6px;
-    list-style: none;
+  .person-status.idle {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--yellow);
   }
 
-  .dev-files li {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text-muted);
-    padding: 1px 0;
+  .person-status.offline {
+    background: rgba(139, 148, 158, 0.1);
+    color: var(--text-dim);
   }
 
-  .dev-files li::before {
-    content: '';
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    margin-right: 6px;
-    border-left: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-    position: relative;
-    top: -2px;
-  }
-
-  .dev-work-areas {
+  .person-issue {
     font-size: 12px;
     color: var(--text-muted);
-    margin-bottom: 8px;
-  }
-
-  .dev-commits {
-    list-style: none;
-    margin-top: 8px;
-    border-top: 1px solid var(--border);
-    padding-top: 8px;
-  }
-
-  .dev-commits li {
-    font-size: 12px;
-    color: var(--text-muted);
-    padding: 3px 0;
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-  }
-
-  .dev-commits .commit-hash {
-    font-family: var(--mono);
-    color: var(--blue);
-    flex-shrink: 0;
-  }
-
-  .dev-commits .commit-msg {
+    margin-bottom: 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .dev-commits .commit-time {
+  .person-issue .issue-id {
+    font-family: var(--mono);
+    color: var(--purple);
+  }
+
+  .person-commit-time {
+    font-size: 11px;
     color: var(--text-dim);
+  }
+
+  .event-feed {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .event-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .event-item:last-child { border-bottom: none; }
+
+  .event-icon {
     flex-shrink: 0;
-    margin-left: auto;
+    width: 16px;
+    text-align: center;
+    font-size: 11px;
+  }
+
+  .event-icon.commit { color: var(--green); }
+  .event-icon.merge { color: var(--purple); }
+  .event-icon.branch { color: var(--blue); }
+  .event-icon.status { color: var(--orange); }
+
+  .event-text {
+    flex: 1;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .event-text strong { color: var(--text); font-weight: 600; }
+
+  .event-time {
+    flex-shrink: 0;
+    color: var(--text-dim);
+    font-size: 11px;
   }
 
   /* Panel: Conflict Radar */
@@ -600,7 +626,10 @@
 <div class="grid">
   <section class="panel" id="activity">
     <div class="panel-title">Team Activity <span class="count" id="activityCount">0</span></div>
-    <div id="activityContent"></div>
+    <div class="activity-section-title">People</div>
+    <div class="people-grid" id="peopleGrid"></div>
+    <div class="activity-section-title">Recent Events</div>
+    <div class="event-feed" id="eventFeed"></div>
   </section>
 
   <section class="panel" id="conflicts">
@@ -688,48 +717,111 @@ function formatDate(ts) {
 
 // --- Render functions ---
 
-function renderActivity(data) {
-  const el = document.getElementById('activityContent');
-  document.getElementById('activityCount').textContent = data.length;
+function isBot(name) {
+  return /\[bot\]|dependabot/i.test(name);
+}
 
-  if (data.length === 0) {
-    el.innerHTML = '<div class="empty-state">No team activity in the last 7 days</div>';
+function getPresenceStatus(dev, linearIssues) {
+  const now = Date.now() / 1000;
+  const lastCommit = dev.last_active || 0;
+  const timeSinceCommit = now - lastCommit;
+
+  const activeIssue = linearIssues.find(i =>
+    i.statusType === 'started' &&
+    !i.status.toLowerCase().includes('review') &&
+    i.assignee === dev.name
+  );
+
+  if (timeSinceCommit < 1800 || (activeIssue && timeSinceCommit < 7200)) {
+    return { status: 'active', issue: activeIssue };
+  }
+  if (activeIssue) {
+    return { status: 'idle', issue: activeIssue };
+  }
+  return { status: 'offline', issue: null };
+}
+
+function renderActivity(activity, linear, statusChanges) {
+  const issues = (linear && linear.issues) ? linear.issues : [];
+  const peopleEl = document.getElementById('peopleGrid');
+  const feedEl = document.getElementById('eventFeed');
+
+  const humans = activity.filter(d => !isBot(d.name));
+  document.getElementById('activityCount').textContent = humans.length;
+
+  if (humans.length === 0) {
+    peopleEl.innerHTML = '<div class="empty-state">No team activity in the last 7 days</div>';
+    feedEl.innerHTML = '';
     return;
   }
 
-  el.innerHTML = data.map(dev => {
-    const branches = dev.active_branches.map(b => b.replace(/^origin\//, '')).join(', ');
-    const files = dev.recent_files.slice(0, 6);
-    const commits = dev.recent_commits || [];
-    const workAreas = dev.work_areas || [];
+  const people = humans.map(dev => ({
+    ...dev,
+    ...getPresenceStatus(dev, issues),
+  }));
 
-    return `
-      <div class="dev-card">
-        <div class="dev-header">
-          <div>
-            <span class="dev-name">${escHtml(dev.name)}</span>
-            <span class="dev-time">${timeAgo(dev.last_active)}</span>
-          </div>
-          ${branches ? `<span class="dev-branch">${escHtml(branches)}</span>` : ''}
-        </div>
-        ${workAreas.length ? `<div class="dev-work-areas">Working in: ${workAreas.map(w => escHtml(w)).join(', ')}</div>` : ''}
-        <ul class="dev-files">
-          ${files.map(f => `<li>${escHtml(f)}</li>`).join('')}
-        </ul>
-        ${commits.length ? `
-          <ul class="dev-commits">
-            ${commits.slice(0, 5).map(c => `
-              <li>
-                <span class="commit-hash">${c.hash || ''}</span>
-                <span class="commit-msg">${escHtml(c.message)}</span>
-                <span class="commit-time">${timeAgo(c.timestamp)}</span>
-              </li>
-            `).join('')}
-          </ul>
-        ` : ''}
+  const statusOrder = { active: 0, idle: 1, offline: 2 };
+  people.sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || b.last_active - a.last_active);
+
+  peopleEl.innerHTML = people.map(p => `
+    <div class="person-card">
+      <div class="person-header">
+        <span class="person-name">${escHtml(p.name)}</span>
+        <span class="person-status ${p.status}">${p.status}</span>
       </div>
-    `;
-  }).join('');
+      <div class="person-issue">
+        ${p.issue
+          ? `<span class="issue-id">${escHtml(p.issue.identifier)}</span>: ${escHtml(p.issue.title)}`
+          : '<span style="opacity:0.5">No active issue</span>'}
+      </div>
+      <div class="person-commit-time">Last commit: ${p.last_active ? timeAgo(p.last_active) : 'none'}</div>
+    </div>
+  `).join('');
+
+  const events = [];
+
+  for (const dev of humans) {
+    for (const commit of (dev.recent_commits || [])) {
+      const isMerge = /^Merge (branch|pull request)/i.test(commit.message);
+      events.push({
+        type: isMerge ? 'merge' : 'commit',
+        actor: dev.name,
+        text: isMerge
+          ? `merged into main — "${escHtml(commit.message.slice(0, 60))}"`
+          : `pushed <code>${commit.hash}</code> — "${escHtml(commit.message.slice(0, 60))}"`,
+        timestamp: commit.timestamp,
+      });
+    }
+  }
+
+  for (const change of (statusChanges || [])) {
+    events.push({
+      type: 'status',
+      actor: change.actor || 'Someone',
+      text: `<strong>${escHtml(change.issueIdentifier)}</strong> moved to <strong>${escHtml(change.toStatus)}</strong>`,
+      timestamp: change.timestamp,
+    });
+  }
+
+  events.sort((a, b) => b.timestamp - a.timestamp);
+  const recentEvents = events.slice(0, 25);
+
+  const iconMap = {
+    commit: '<span class="event-icon commit">&#9679;</span>',
+    merge: '<span class="event-icon merge">&#8634;</span>',
+    branch: '<span class="event-icon branch">&#9745;</span>',
+    status: '<span class="event-icon status">&#8594;</span>',
+  };
+
+  feedEl.innerHTML = recentEvents.length
+    ? recentEvents.map(e => `
+      <div class="event-item">
+        ${iconMap[e.type] || ''}
+        <span class="event-text"><strong>${escHtml(e.actor)}</strong> ${e.text}</span>
+        <span class="event-time">${timeAgo(e.timestamp)}</span>
+      </div>
+    `).join('')
+    : '<div class="empty-state">No recent events</div>';
 }
 
 function renderConflicts(data) {
