@@ -333,5 +333,5 @@ MIT
 ---
 
 <p align="center">
-  Built by <a href="https://github.com/tellertech">TellerTech</a>
+  Built by <a href="https://github.com/TellerTechnologies">TellerTechnologies</a>
 </p>
