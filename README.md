@@ -12,330 +12,163 @@
 </h1>
 
 <p align="center">
-  <strong>The ultimate agentic pair programming platform.</strong>
+  <strong>Shared context for humans and AI agents working in the same repo.</strong>
   <br>
-  For one developer and one agent. For a whole team. For a swarm of agents. Or any mix.
+  Linear tickets, git branches, live conflict detection, and a team dashboard, all over MCP.
 </p>
 
 ---
 
-## The Platform
+## What it is
 
-Pair programming works because two minds share the same context. Swarmcode extends that idea past two:
+Swarmcode is an MCP server that gives AI coding agents (and their humans) a shared picture of the work. It pulls Linear tickets, branches, commits, and team activity into one coordination surface, and prevents agents from claiming the same ticket, editing the same file blindly, or rebuilding what a teammate just finished.
 
-- **Solo dev + one agent.** The agent sees your branches, your work-in-progress commits, your Linear tickets, and the docs in `docs/`. It stops asking what project you are in.
-- **Team of developers.** Everyone sees who is touching what file, who is about to conflict with whom, and what is in flight in Linear. Auto-push keeps the view live.
-- **A swarm of agents.** Agents claim tickets under a lock, branch off them, commit under the ticket ID, and detect conflicts before they write. No two agents stomp the same file.
-- **Any mix.** Humans and agents show up in the same dashboard. A commit from an agent and a commit from a teammate surface identically in team activity. There is no separate channel.
+Works for a solo dev with one agent, a team of developers, a swarm of agents, or any mix.
 
-The shared context is **git + Linear**. The interface is **MCP**. The guardrails are multi-agent locks, pre-write conflict detection, and hooks that keep Linear in sync with what is actually happening in the repo.
-
-## The Pitch
-
-The official Linear MCP gives agents CRUD on tickets. That is a great start and a terrible finish. A swarm of agents (or a team of humans working alongside agents) needs more:
-
-- A **lock on `pick_issue`** so two agents cannot claim the same ticket.
-- **Git hooks** that move a Linear issue to In Progress the moment an agent commits on its branch.
-- **Pre-write conflict detection** via `git merge-tree` so an agent knows before it edits a file that another agent is about to collide with it.
-- **Cross-branch code search** so an agent does not rebuild a function a teammate already exported.
-- **Auto-push** so teammates see each other's work within seconds, not at PR time.
-
-Think of it as **Linear MCP + git coordination + multi-agent guardrails**. Linear is the brain. Git is the hands. Swarmcode is the nervous system that wires them together.
-
-## The Problem
-
-LLM coding agents are fast, cheap, and increasingly good. Writing code is no longer the bottleneck. The bottleneck is keeping three of them working in parallel from:
-
-- claiming the same ticket,
-- rebuilding what a teammate finished an hour ago,
-- overwriting each other's changes in the same file,
-- drifting out of sync with Linear so a human cannot tell what is done.
-
-Claude Code, Cursor, and Copilot each know what *they* are doing. None of them know what the others are doing. Swarmcode is the connective tissue.
-
-## How It Works
-
-```
-                  ┌─────────────────────────────┐
-                  │   Agents work in parallel.   │
-                  └──────────────┬──────────────┘
-                                 │
-                  ┌──────────────▼──────────────┐
-                  │   Each one calls swarmcode   │
-                  │   tools over MCP: claim a    │
-                  │   ticket, check a file,      │
-                  │   search the codebase.       │
-                  └──────────────┬──────────────┘
-                                 │
-                  ┌──────────────▼──────────────┐
-                  │   Swarmcode reads git and    │
-                  │   Linear on demand. No       │
-                  │   daemons, no caches, no     │
-                  │   manifests.                 │
-                  └──────────────┬──────────────┘
-                                 │
-                  ┌──────────────▼──────────────┐
-                  │   Git is the shared state.   │
-                  │   Linear is the task queue.  │
-                  │   Hooks link them together.  │
-                  └──────────────┬──────────────┘
-                                 │
-                  ┌──────────────▼──────────────┐
-                  │   Agents see each other.     │
-                  │   Conflicts surface before   │
-                  │   they happen.               │
-                  └─────────────────────────────┘
-```
-
-### The Coordination Layers
-
-```
-  ┌─────────────────────────────────────────────────────┐
-  │  LINEAR        ████████████████████   the brain     │
-  │  Tickets, assignments, projects, status.            │
-  ├─────────────────────────────────────────────────────┤
-  │  GIT           ████████████████████   the hands     │
-  │  Branches, commits, files, conflicts.               │
-  ├─────────────────────────────────────────────────────┤
-  │  HOOKS         ████████████████████   the glue      │
-  │  Branch names link git events to Linear state.      │
-  ├─────────────────────────────────────────────────────┤
-  │  MCP           ████████████████████   the interface │
-  │  Agents call tools, get coordination data.          │
-  └─────────────────────────────────────────────────────┘
-```
-
-## Install
+## Quick start
 
 ```bash
 git clone https://github.com/TellerTechnologies/swarmcode.git
 cd swarmcode && npm install && npm link
 ```
 
-Then in any project:
+In any project:
 
 ```bash
 cd /path/to/your-project
-swarmcode init          # adds CLAUDE.md + MCP config
-swarmcode hook          # installs git hooks for Linear integration
+swarmcode init          # adds CLAUDE.md + .mcp.json
+swarmcode hook          # installs git hooks that sync commits to Linear
 ```
 
-### Connect Linear (required for most features)
+Connect Linear (strongly recommended, powers most features):
 
 ```bash
 export SWARMCODE_LINEAR_API_KEY=lin_api_xxxxx
-export SWARMCODE_LINEAR_TEAM=ENG              # optional, defaults to first team
+export SWARMCODE_LINEAR_TEAM=ENG              # optional
 ```
 
-Get your key from [Linear Settings → API](https://linear.app/settings/api). Add it to `~/.bashrc` or `~/.zshrc`.
-
-Without a Linear key, swarmcode still provides git coordination (team activity, conflict detection, cross-branch code search) but ticket claiming, progress comments, and the git-to-Linear hook integration will be disabled.
-
-### Other AI tools
+For other AI tools:
 
 ```bash
-swarmcode init --tool cursor    # .cursorrules
-swarmcode init --tool copilot   # .github/copilot-instructions.md
+swarmcode init --tool cursor     # .cursorrules
+swarmcode init --tool copilot    # .github/copilot-instructions.md
 ```
 
-## A Day in the Life of an Agent
+## Features
 
-```
-Agent starts session
-│
-├── start_session ..........> team activity, conflicts, project context, auto-push
-├── linear_get_issues ......> what is available to work on?
-│
-├── pick_issue("ENG-123") ..> claims ticket (optimistic lock), returns branch name
-│   └── git checkout -b feat/eng-123-auth-flow
-│
-├── Commits ................> hooks auto-prepend "ENG-123:" to messages
-│   │                          post-commit hook moves ENG-123 to In Progress
-│   └── auto-push sends to remote within seconds
-│
-├── check_path / search_code > pre-write conflict and duplication detection
-│
-├── log_progress("ENG-123", "Auth done, starting tests")
-│
-└── complete_issue("ENG-123") > marks Done in Linear
-```
+### Ticket-aware branches
 
-## Git Hooks
+`pick_issue` claims a Linear ticket under an optimistic lock (two agents cannot claim the same one), assigns it to you, moves it to In Progress, and returns a branch name like `feat/eng-123-auth-flow`. Agents check out that branch and start working.
 
-`swarmcode hook` installs 4 git hooks that wire git events directly into Linear:
+### Git hooks that keep Linear in sync
 
-| Hook | What it does |
-|------|-------------|
-| `prepare-commit-msg` | Auto-prepends issue ID from branch name to commits |
+Four hooks installed by `swarmcode hook`:
+
+| Hook | Effect |
+|------|--------|
+| `prepare-commit-msg` | Prepends the issue ID from the branch name to every commit |
 | `commit-msg` | Warns if a commit has no issue ID |
-| `post-commit` | First commit on branch moves the Linear issue to In Progress |
-| `pre-push` | Fetches remote branches before pushing |
+| `post-commit` | First commit on a branch moves the Linear issue to In Progress |
+| `pre-push` | Fetches remotes before push to avoid surprise conflicts |
 
-Branch naming convention: `feat/eng-123-description`. Hooks parse the ID and handle the rest.
+Commits become traceable to tickets automatically. No one has to remember.
 
-## What It Detects
+### Pre-write conflict detection
 
-| Detector | What it surfaces |
-|----------|------------------|
-| **`check_path`** | Pre-write merge conflict detection via `git merge-tree`, plus ownership and risk |
-| **`search_code`** | Does this function already exist on any branch? (14 languages) |
-| **`check_conflicts`** | Files modified on multiple branches right now |
-| **`pick_issue` lock** | Optimistic lock. Rejects if another agent already claimed the ticket. |
-| **`start_session`** | One call returns team activity, context, conflicts, and starts auto-push |
+`check_path` runs `git merge-tree` against every active branch in the repo and tells the agent *before* it writes whether the file it is about to edit will merge cleanly. Conflicts surface seconds after a teammate pushes, not at PR time.
+
+### Cross-branch code search
+
+`search_code` parses exports from every branch in 14 languages (JS/TS, Python, Go, Rust, Ruby, PHP, Java, Kotlin, C#, Swift, C++, Elixir, Scala) and answers: *does this function already exist somewhere?* Agents stop rebuilding what a teammate already wrote.
+
+### Auto-push
+
+Once enabled, swarmcode pushes new commits to the remote every few seconds. Teammates and the dashboard see work live, not on PR.
+
+### Live team dashboard
+
+```bash
+swarmcode dashboard                 # http://localhost:3000
+```
+
+Five panels, auto-refreshing every 30 seconds:
+
+- **Team Activity**: developer cards with branches, commits, work areas
+- **Conflict Radar**: files modified on multiple branches, ranked by severity
+- **Branch Timeline**: 48-hour commit timeline per branch
+- **Linear**: active issues grouped by status
+- **Project Context**: rendered markdown from `docs/`, `PLAN.md`, `README.md`, `CLAUDE.md` with syntax highlighting
+
+### Multi-agent test harness
+
+Run N agents concurrently against a scenario and grade how well they coordinate:
+
+```bash
+swarmcode test list
+swarmcode test run --scenario test/scenarios/overlapping-files.yaml
+swarmcode test report <run-id>
+```
+
+Each run produces a scorecard (A = clean, D = conflicts or duplicate claims). The harness uses `git merge -X patience` to auto-resolve recoverable conflicts.
+
+### Full Linear control
+
+Swarmcode is a superset of the official Linear MCP. Agents can create and update tickets, manage sub-issues, link relations (`blocks`, `duplicate`, `relates-to`), check off description checkboxes, manage labels, and update project status, all from inside a coding session.
 
 ## Tools
 
-### Session & Coordination
+**Git and coordination (9)**
+`start_session` · `check_path` · `search_code` · `check_conflicts` · `get_developer` · `get_project_context` · `get_team_activity` · `enable_auto_push` · `disable_auto_push`
 
-| Tool | What |
-|------|------|
-| `start_session` | One call: activity, context, conflicts, auto-push |
-| `check_path` | Ownership, risk, and pre-write merge conflict detection |
-| `search_code` | Does this function already exist on any branch? |
-| `check_conflicts` | Files modified on multiple branches |
-| `get_developer` | One teammate's commits, branches, files |
-| `get_project_context` | Reads `PLAN.md`, specs, READMEs, `CLAUDE.md` |
+**Linear issues (13)**
+`linear_get_issues` · `pick_issue` · `complete_issue` · `log_progress` · `search_issues` · `get_issue` · `create_issue` · `create_sub_issue` · `update_issue` · `archive_issue` · `check_item` · `create_issue_relation` · `get_issue_relations`
 
-### Linear: Issues
+**Linear projects (5)**
+`project_status` · `get_project_issues` · `update_project_status` · `update_project` · `add_issue_to_project`
 
-| Tool | What |
-|------|------|
-| `pick_issue` | Claim a ticket. Optimistic lock prevents double-claims. |
-| `complete_issue` | Mark Done |
-| `log_progress` | Comment on a ticket (milestones, not every commit) |
-| `create_issue` | Found a bug? Create a ticket. |
-| `create_sub_issue` | Break work into pieces |
-| `search_issues` | Does a ticket already exist? |
-| `get_issue` | Full details, comments, sub-issues |
-| `update_issue` | Edit title, description, priority, assignee |
+**Linear labels, states, workspace (8)**
+`get_labels` · `add_label` · `remove_label` · `get_workflow_states` · `get_teams` · `get_users` · `get_viewer` (+ `update_project` shared above)
 
-### Linear: Projects & Reference
+See `docs/architecture.md` for how each one maps to git and Linear operations.
 
-| Tool | What |
-|------|------|
-| `project_status` | All projects with progress and health |
-| `get_project_issues` | Issues in a project |
-| `update_project_status` | Post a status update (on track, at risk, off track) |
-| `update_project` | Change name, state, target date |
-| `get_teams`, `get_users`, `get_viewer`, `get_labels` | ID resolution |
-
-## Dashboard
-
-```bash
-swarmcode dashboard                # http://localhost:3000
-swarmcode dashboard --port 8080
-```
-
-Live web dashboard with five panels:
-
-- **Team Activity**: developer cards with branches, commits, work areas
-- **Conflict Radar**: files on multiple branches with severity
-- **Branch Timeline**: 48-hour commit timeline per branch
-- **Linear**: active issues by status (when API key is set)
-- **Project Context**: rendered markdown docs with syntax highlighting
-
-Auto-updates every 30 seconds. No build step, served directly from disk.
-
-## Multi-Agent Testing
-
-Swarmcode ships with a test harness for validating coordination between concurrent agents. Launch N agents on overlapping work and grade how well they cooperate.
-
-```bash
-swarmcode test list                                           # scenarios available
-swarmcode test run --scenario test/scenarios/overlapping-files.yaml
-swarmcode test report <run-id>                                # past results
-swarmcode test cleanup                                        # remove orphaned worktrees
-```
-
-### Scenario format
-
-```yaml
-name: overlapping-files
-description: "3 agents modifying shared modules"
-agents: 3
-base_branch: master
-test_command: "npm test"
-timeout_minutes: 30
-
-issues:
-  - title: "Add feature A"
-    agent: typescript-pro      # uses .claude/agents/typescript-pro.md
-  - title: "Add feature B"
-    agent: test-automator
-```
-
-### Scorecard
-
-```
-  ┌─────────────────────────────────────────────────────┐
-  │  A   ████████████████████   Zero conflicts.         │
-  │  Zero duplication. All tests pass.                  │
-  ├─────────────────────────────────────────────────────┤
-  │  B   ██████████████░░░░░░   Conflicts auto-resolved │
-  │  with git merge -X patience.                        │
-  ├─────────────────────────────────────────────────────┤
-  │  C   ████████░░░░░░░░░░░░   Unresolvable merge      │
-  │  conflicts. Human intervention required.            │
-  ├─────────────────────────────────────────────────────┤
-  │  D   ███░░░░░░░░░░░░░░░░░   Incomplete issues,      │
-  │  duplicate claims, or test failures.                │
-  └─────────────────────────────────────────────────────┘
-```
-
-## CLI Reference
+## CLI
 
 ```bash
 swarmcode                          # start MCP server (stdio)
-swarmcode init                     # add coordination rules to CLAUDE.md / .mcp.json
+swarmcode init [--tool ...]        # add coordination rules and MCP config
 swarmcode hook                     # install git hooks
-swarmcode status                   # team activity from the terminal
-swarmcode dashboard                # launch web dashboard
-swarmcode test run                 # run a multi-agent test scenario
-swarmcode test list                # list available scenarios
+swarmcode status                   # team activity in the terminal
+swarmcode dashboard [--port N]     # launch web dashboard
+swarmcode test list                # list test scenarios
+swarmcode test run --scenario ...  # run a multi-agent test
 swarmcode test report <id>         # reprint a past scorecard
 swarmcode test cleanup             # remove orphaned worktrees and test issues
 ```
 
 ## Architecture
 
-Swarmcode is a **stateless MCP server**. Every tool call reads git and the filesystem directly. No manifests, no background sync, no caches to invalidate.
+Stateless MCP server. No daemons, no manifests, no caches. Every tool call reads git and the Linear API on demand, which means the data is always current and there is nothing to invalidate.
 
 ```
 swarmcode/
-├── bin/
-│   └── swarmcode.ts              CLI entry, starts MCP server by default
+├── bin/swarmcode.ts          CLI entry
 ├── src/
-│   ├── server.ts                 MCP server setup, registers tools with zod
-│   ├── git.ts                    All git commands (execFileSync, no shell injection)
-│   ├── source-parser.ts          Export search across 14 languages
-│   ├── tools/                    One file per MCP tool
-│   ├── dashboard/                HTTP server + single-page dashboard
-│   ├── test/                     Multi-agent test harness
-│   └── types.ts                  Shared type definitions
-└── docs/                         Architecture, design decisions, dev guide
+│   ├── server.ts             MCP server, registers 35 tools
+│   ├── git.ts                All git commands (execFileSync, no shell injection)
+│   ├── linear.ts             Typed Linear client built on @linear/sdk
+│   ├── source-parser.ts      Cross-branch export search, 14 languages
+│   ├── tools/                One file per git-side tool
+│   ├── dashboard/            HTTP server + single-page dashboard
+│   └── test/                 Multi-agent test harness
+└── docs/                     Architecture, design decisions, dev guide
 ```
-
-Built with `@linear/sdk` for typed Linear access. No raw GraphQL.
-
-See [`docs/`](docs/) for architecture details, design decisions, and the development guide.
 
 ## Requirements
 
-- **Node.js 18+**
-- **Shared git repository** with a remote
-- **MCP-compatible AI client**: Claude Code, Cursor, VS Code, or anything speaking the protocol
-- **Linear account and API key** (strongly recommended, powers most features)
-
-## How It Compares
-
-| Project | Approach | What it gives an AI agent |
-|---------|----------|---------------------------|
-| **Linear MCP (official)** | Linear CRUD over MCP | Read and write tickets |
-| **GitHub MCP** | GitHub REST over MCP | PRs, issues, repo metadata |
-| **aider / Copilot Workspace** | Single-agent pair programming | One agent, one task |
-| **swarmcode** | **Linear + git + multi-agent guardrails** | **Ticket claiming with locks, branch-aware coordination, pre-write conflict detection, hooks that link commits to Linear state** |
-
-Linear MCP tells an agent what the tickets are. Swarmcode tells a swarm of agents how to actually work on them together.
+- Node.js 18+
+- A shared git repository with a remote
+- An MCP-compatible AI client (Claude Code, Cursor, VS Code, or any MCP client)
+- A Linear account and API key (strongly recommended)
 
 ## License
 
