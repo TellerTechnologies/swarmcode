@@ -12,12 +12,24 @@
 </h1>
 
 <p align="center">
-  <strong>Coordinate a swarm of AI coding agents using git.</strong>
+  <strong>The Linear MCP that actually knows git.</strong>
   <br>
-  One agent is a pair programmer. Three agents are a team, if they can see each other.
+  Coordinate a swarm of AI coding agents across Linear tickets and real branches.
 </p>
 
 ---
+
+## The Pitch
+
+The official Linear MCP gives agents CRUD on tickets. That is a great start and a terrible finish. A swarm of agents needs more:
+
+- A **lock on `pick_issue`** so two agents cannot claim the same ticket.
+- **Git hooks** that move a Linear issue to In Progress the moment an agent commits on its branch.
+- **Pre-write conflict detection** via `git merge-tree` so an agent knows before it edits a file that another agent is about to collide with it.
+- **Cross-branch code search** so an agent does not rebuild a function a teammate already exported.
+- **Auto-push** so teammates see each other's work within seconds, not at PR time.
+
+Think of it as **Linear MCP + git coordination + multi-agent guardrails**. Linear is the brain. Git is the hands. Swarmcode is the nervous system that wires them together.
 
 ## The Problem
 
@@ -97,14 +109,16 @@ swarmcode init          # adds CLAUDE.md + MCP config
 swarmcode hook          # installs git hooks for Linear integration
 ```
 
-### Connect Linear
+### Connect Linear (required for most features)
 
 ```bash
 export SWARMCODE_LINEAR_API_KEY=lin_api_xxxxx
-export SWARMCODE_LINEAR_TEAM=ENG              # optional
+export SWARMCODE_LINEAR_TEAM=ENG              # optional, defaults to first team
 ```
 
-Get your key from [Linear Settings → API](https://linear.app/settings/api). Add to `~/.bashrc` or `~/.zshrc`.
+Get your key from [Linear Settings → API](https://linear.app/settings/api). Add it to `~/.bashrc` or `~/.zshrc`.
+
+Without a Linear key, swarmcode still provides git coordination (team activity, conflict detection, cross-branch code search) but ticket claiming, progress comments, and the git-to-Linear hook integration will be disabled.
 
 ### Other AI tools
 
@@ -299,18 +313,18 @@ See [`docs/`](docs/) for architecture details, design decisions, and the develop
 - **Node.js 18+**
 - **Shared git repository** with a remote
 - **MCP-compatible AI client**: Claude Code, Cursor, VS Code, or anything speaking the protocol
-- **Linear API key** (optional) for project management integration
+- **Linear account and API key** (strongly recommended, powers most features)
 
 ## How It Compares
 
-| Project | Approach | What it coordinates |
-|---------|----------|---------------------|
-| CLAUDE.md | Static config | What you tell one agent |
-| aider | Single-agent pair programming | One agent, your repo |
-| GitHub Copilot Workspace | Cloud-hosted agent | One agent, one task |
-| **swarmcode** | **Git + Linear as shared state** | **A team of agents, working in parallel** |
+| Project | Approach | What it gives an AI agent |
+|---------|----------|---------------------------|
+| **Linear MCP (official)** | Linear CRUD over MCP | Read and write tickets |
+| **GitHub MCP** | GitHub REST over MCP | PRs, issues, repo metadata |
+| **aider / Copilot Workspace** | Single-agent pair programming | One agent, one task |
+| **swarmcode** | **Linear + git + multi-agent guardrails** | **Ticket claiming with locks, branch-aware coordination, pre-write conflict detection, hooks that link commits to Linear state** |
 
-Every existing tool scales one agent. This one scales the team.
+Linear MCP tells an agent what the tickets are. Swarmcode tells a swarm of agents how to actually work on them together.
 
 ## License
 
