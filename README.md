@@ -1,8 +1,37 @@
 # Swarmcode
 
-**Coordinate AI coding agents with git and Linear.**
+> **Coordinate a swarm of AI coding agents using git.**
+> One agent is a pair programmer. Three agents are a team — if they can see each other.
 
-Swarmcode is an MCP server that makes AI coding assistants aware of each other. It uses git for real-time coordination (who's touching what files, where are conflicts) and Linear for project management (what's assigned, what's done, what's blocked). AI agents claim tickets, work them, log progress, and mark them done — autonomously.
+Swarmcode is an MCP server that makes AI coding assistants aware of each other. It uses **git** for real-time coordination (who's touching what, where are the conflicts) and **Linear** for project management (what's assigned, what's done, what's blocked). Agents claim tickets, branch, commit, log progress, and mark them done — autonomously, without stepping on each other's work.
+
+```
+   ┌─ agent A ─┐          ┌──────────┐          ┌─ agent C ─┐
+   │ ENG-123   │──┐    ┌──│ swarmcode│──┐    ┌──│ ENG-125   │
+   └───────────┘  ├────┤  │   (MCP)  │  ├────┤  └───────────┘
+                  │    │  └──────────┘  │    │
+                  │    │  git + Linear  │    │
+                  │    │    as truth    │    │
+                  │    └────────────────┘    │
+                  │      ┌─ agent B ─┐       │
+                  └──────│ ENG-124   │───────┘
+                         └───────────┘
+```
+
+---
+
+## Why
+
+LLM coding agents are fast, cheap, and increasingly good. The bottleneck is no longer *writing* code — it's making sure three of them working in parallel don't:
+
+- claim the same ticket,
+- rebuild what a teammate finished an hour ago,
+- overwrite each other's changes in the same file,
+- or drift out of sync with Linear so a human can't tell what's done.
+
+Swarmcode is the connective tissue. Git is the **shared state** (no manifests, no extra daemons — `git log` is authoritative). Linear is the **task queue**. Agents get a single coordination surface: "what's happening, what's mine, what conflicts, what's next."
+
+---
 
 ## Quick Start
 
@@ -17,7 +46,7 @@ swarmcode init          # adds CLAUDE.md + MCP config
 swarmcode hook          # installs git hooks for Linear integration
 ```
 
-### Connect Linear (recommended)
+### Connect Linear
 
 ```bash
 export SWARMCODE_LINEAR_API_KEY=lin_api_xxxxx
@@ -33,31 +62,35 @@ swarmcode init --tool cursor    # .cursorrules
 swarmcode init --tool copilot   # .github/copilot-instructions.md
 ```
 
-## How It Works
+---
+
+## A Day in the Life of an Agent
 
 ```
 Agent starts session
 │
-├── start_session ──→ team activity + conflicts + project context + auto-push
+├── start_session ──────→ team activity + conflicts + project context + auto-push
 ├── linear_get_issues ──→ what's available to work on?
 │
-├── pick_issue("ENG-123") ──→ claims ticket, returns branch name
+├── pick_issue("ENG-123") ──→ claims ticket (optimistic lock), returns branch name
 │   └── git checkout -b feat/eng-123-auth-flow
 │
 ├── Commits ──→ hooks auto-prepend "ENG-123:" to messages
-│   │           post-commit hook moves ENG-123 to In Progress
+│   │          post-commit hook moves ENG-123 → In Progress
 │   └── auto-push sends to remote within seconds
 │
-├── check_path / search_code ──→ avoid conflicts and duplication
+├── check_path / search_code ──→ pre-write conflict & duplication detection
 │
 ├── log_progress("ENG-123", "Auth done, starting tests")
 │
 └── complete_issue("ENG-123") ──→ marks Done in Linear
 ```
 
+---
+
 ## Git Hooks
 
-`swarmcode hook` installs 4 git hooks that link git and Linear automatically:
+`swarmcode hook` installs 4 git hooks that wire git events directly into Linear:
 
 | Hook | What it does |
 |------|-------------|
@@ -66,7 +99,9 @@ Agent starts session
 | `post-commit` | First commit on branch → moves Linear issue to In Progress |
 | `pre-push` | Fetches remote branches before pushing |
 
-Branch naming convention: `feat/eng-123-description`. The hooks parse the issue ID and handle the rest.
+Branch naming: `feat/eng-123-description`. The hooks parse the ID and handle the rest.
+
+---
 
 ## Tools
 
@@ -74,18 +109,18 @@ Branch naming convention: `feat/eng-123-description`. The hooks parse the issue 
 
 | Tool | What |
 |------|------|
-| `start_session` | Everything at session start: activity, context, conflicts, auto-push |
-| `check_path` | Ownership analysis + risk assessment + **pre-write merge conflict detection via git merge-tree** |
+| `start_session` | One call: activity, context, conflicts, auto-push |
+| `check_path` | Ownership + risk + **pre-write merge conflict detection via `git merge-tree`** |
 | `search_code` | Does this function already exist on any branch? |
 | `check_conflicts` | Files modified on multiple branches |
 | `get_developer` | One teammate's commits, branches, files |
-| `get_project_context` | Read PLAN.md, specs, README, CLAUDE.md |
+| `get_project_context` | Reads `PLAN.md`, specs, READMEs, `CLAUDE.md` |
 
 ### Linear — Issues
 
 | Tool | What |
 |------|------|
-| `pick_issue` | Claim a Linear issue: assigns to you, moves to In Progress. **Includes optimistic lock -- rejects if issue is already claimed by another agent.** |
+| `pick_issue` | Claim a ticket. **Optimistic lock** — rejects if already claimed by another agent. |
 | `complete_issue` | Mark Done |
 | `log_progress` | Comment on a ticket (milestones, not every commit) |
 | `create_issue` | Found a bug? Create a ticket |
@@ -94,7 +129,7 @@ Branch naming convention: `feat/eng-123-description`. The hooks parse the issue 
 | `get_issue` | Full details, comments, sub-issues |
 | `update_issue` | Edit title, description, priority, assignee |
 
-### Linear — Projects
+### Linear — Projects & Reference
 
 | Tool | What |
 |------|------|
@@ -102,15 +137,9 @@ Branch naming convention: `feat/eng-123-description`. The hooks parse the issue 
 | `get_project_issues` | Issues in a project |
 | `update_project_status` | Post a status update (on track / at risk / off track) |
 | `update_project` | Change name, state, target date |
+| `get_teams` / `get_users` / `get_viewer` / `get_labels` | ID resolution |
 
-### Linear — Reference
-
-| Tool | What |
-|------|------|
-| `get_teams` | Resolve team IDs |
-| `get_users` | Resolve user IDs |
-| `get_viewer` | Who am I? |
-| `get_labels` | Available labels |
+---
 
 ## Dashboard
 
@@ -120,37 +149,29 @@ swarmcode dashboard --port 8080
 ```
 
 Live web dashboard with five panels:
+
 - **Team Activity** — developer cards with branches, commits, work areas
 - **Conflict Radar** — files on multiple branches with severity
 - **Branch Timeline** — 48-hour commit timeline per branch
 - **Linear** — active issues by status (when API key is set)
-- **Project Context** — rendered markdown docs
+- **Project Context** — rendered markdown docs with syntax highlighting
 
-Auto-updates every 30 seconds.
+Auto-updates every 30 seconds. No build step — served directly from disk.
+
+---
 
 ## Multi-Agent Testing
 
-Swarmcode includes a test harness for validating coordination between concurrent AI agents.
-
-### Quick Start
+Swarmcode ships with a test harness for validating coordination between concurrent agents. Launch N agents on overlapping work and grade how well they cooperate.
 
 ```bash
-# List available scenarios
-swarmcode test list
-
-# Run a scenario with concurrent agents
+swarmcode test list                                           # scenarios available
 swarmcode test run --scenario test/scenarios/overlapping-files.yaml
-
-# View past results
-swarmcode test report <run-id>
-
-# Clean up orphaned worktrees and test issues
-swarmcode test cleanup
+swarmcode test report <run-id>                                # past results
+swarmcode test cleanup                                        # remove orphaned worktrees
 ```
 
-### Scenarios
-
-Define test scenarios in YAML:
+### Scenario format
 
 ```yaml
 name: overlapping-files
@@ -162,59 +183,63 @@ timeout_minutes: 30
 
 issues:
   - title: "Add feature A"
-    description: "..."
-    agent: typescript-pro  # uses .claude/agents/typescript-pro.md
+    agent: typescript-pro      # uses .claude/agents/typescript-pro.md
   - title: "Add feature B"
-    description: "..."
     agent: test-automator
 ```
 
 ### Scorecard
 
-Each run produces a graded scorecard:
+| Grade | Meaning |
+|-------|---------|
+| **A** | Zero conflicts, zero duplication, all tests pass |
+| **B** | Conflicts auto-resolved with `git merge -X patience` |
+| **C** | Unresolvable merge conflicts |
+| **D** | Incomplete issues, duplicate claims, or test failures |
 
-- **A** — zero conflicts, zero duplication, all tests pass
-- **B** — conflicts auto-resolved with patience merge strategy
-- **C** — unresolvable merge conflicts
-- **D** — incomplete issues, duplicate claims, or test failures
+### Conflict prevention built in
 
-### Conflict Prevention
+- **Optimistic lock on `pick_issue`** — two agents can't claim the same issue
+- **Pre-write detection** — `check_path` runs `git merge-tree` against active branches before you edit
+- **Auto-resolution** — the harness retries failed merges with patience strategy
 
-- **Optimistic lock on `pick_issue`** — prevents two agents from claiming the same issue
-- **Pre-write conflict detection** — `check_path` runs `git merge-tree` against active branches to warn before edits
-- **Auto-resolution** — the harness retries failed merges with `git merge -X patience`
+---
 
 ## CLI
 
 ```bash
-swarmcode                          # start MCP server
-swarmcode init                     # add coordination rules
+swarmcode                          # start MCP server (stdio)
+swarmcode init                     # add coordination rules to CLAUDE.md / .mcp.json
 swarmcode hook                     # install git hooks
-swarmcode status                   # team activity from terminal
+swarmcode status                   # team activity from the terminal
 swarmcode dashboard                # launch web dashboard
 swarmcode test run                 # run a multi-agent test scenario
 swarmcode test list                # list available scenarios
-swarmcode test report              # reprint a past scorecard
+swarmcode test report <id>         # reprint a past scorecard
 swarmcode test cleanup             # remove orphaned worktrees and test issues
 ```
 
-## Requirements
-
-- **Node.js 18+**
-- **Shared git repository** with a remote
-- **MCP-compatible AI client** (Claude Code, Cursor, VS Code)
-- **Linear API key** (optional) for project management
+---
 
 ## Architecture
 
 - **Linear is the brain** — tickets, assignments, status, projects
 - **Git is the hands** — branches, commits, files, conflicts
 - **Hooks are the glue** — branch names link git events to Linear state
-- **MCP is the interface** — AI agents call tools, get coordination data
+- **MCP is the interface** — agents call tools, get coordination data
 
-Built with `@linear/sdk` for typed Linear API access. No raw GraphQL.
+Built with `@linear/sdk` for typed Linear access. Stateless server — every tool call reads directly from git and the filesystem on demand. No manifests, no background sync, no caches to invalidate.
 
-See [docs/](docs/) for architecture details, design decisions, and development guide.
+See [`docs/`](docs/) for deeper architecture notes, design decisions, and the development guide.
+
+---
+
+## Requirements
+
+- **Node.js 18+**
+- **Shared git repository** with a remote
+- **MCP-compatible AI client** — Claude Code, Cursor, VS Code, or anything speaking the protocol
+- **Linear API key** (optional) for project management integration
 
 ## License
 
