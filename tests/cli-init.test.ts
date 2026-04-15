@@ -38,6 +38,8 @@ describe('swarmcode init', () => {
     expect(content).toContain('Recommended Project Structure');
     expect(content).toContain('PLAN.md');
     expect(content).toContain('specs/');
+    expect(content).toContain('Multi-Agent Coordination');
+    expect(content).toContain('optimistic lock');
   });
 
   it('creates .mcp.json with swarmcode server for claude-code', () => {

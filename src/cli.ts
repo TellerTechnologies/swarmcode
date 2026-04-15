@@ -69,6 +69,14 @@ Swarmcode scans these locations for project context:
 - \`docs/\` — architecture, design decisions, guides
 - \`specs/\` — design specifications
 - \`CLAUDE.md\` / \`.cursorrules\` — AI coordination rules
+
+### Multi-Agent Coordination
+
+Swarmcode prevents conflicts when multiple agents work concurrently:
+
+- \`pick_issue\` has an optimistic lock — if an issue is already In Progress, it returns an error. Pick a different issue.
+- \`check_path\` detects merge conflicts before you edit — if it returns \`conflict_likely\` with \`merge_conflicts\`, choose a different approach or wait.
+- Do not work on issues that are already In Progress and assigned to someone else.
 `;
 
   const TOOL_FILES: Record<string, string> = {
