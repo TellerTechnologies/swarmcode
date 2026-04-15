@@ -12,16 +12,27 @@
 </h1>
 
 <p align="center">
-  <strong>The Linear MCP that actually knows git.</strong>
+  <strong>The ultimate agentic pair programming platform.</strong>
   <br>
-  Coordinate a swarm of AI coding agents across Linear tickets and real branches.
+  For one developer and one agent. For a whole team. For a swarm of agents. Or any mix.
 </p>
 
 ---
 
+## The Platform
+
+Pair programming works because two minds share the same context. Swarmcode extends that idea past two:
+
+- **Solo dev + one agent.** The agent sees your branches, your work-in-progress commits, your Linear tickets, and the docs in `docs/`. It stops asking what project you are in.
+- **Team of developers.** Everyone sees who is touching what file, who is about to conflict with whom, and what is in flight in Linear. Auto-push keeps the view live.
+- **A swarm of agents.** Agents claim tickets under a lock, branch off them, commit under the ticket ID, and detect conflicts before they write. No two agents stomp the same file.
+- **Any mix.** Humans and agents show up in the same dashboard. A commit from an agent and a commit from a teammate surface identically in team activity. There is no separate channel.
+
+The shared context is **git + Linear**. The interface is **MCP**. The guardrails are multi-agent locks, pre-write conflict detection, and hooks that keep Linear in sync with what is actually happening in the repo.
+
 ## The Pitch
 
-The official Linear MCP gives agents CRUD on tickets. That is a great start and a terrible finish. A swarm of agents needs more:
+The official Linear MCP gives agents CRUD on tickets. That is a great start and a terrible finish. A swarm of agents (or a team of humans working alongside agents) needs more:
 
 - A **lock on `pick_issue`** so two agents cannot claim the same ticket.
 - **Git hooks** that move a Linear issue to In Progress the moment an agent commits on its branch.
