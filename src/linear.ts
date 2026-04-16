@@ -278,7 +278,6 @@ const ISSUES_QUERY = `
         identifier
         title
         description
-        assigneeId
         priority
         branchName
         url
@@ -287,7 +286,7 @@ const ISSUES_QUERY = `
         parentId
         updatedAt
         state { name type }
-        assignee { name }
+        assignee { id name }
         labels { nodes { name color } }
       }
     }
@@ -299,7 +298,6 @@ interface RawIssueNode {
   identifier: string;
   title: string;
   description: string | null;
-  assigneeId: string | null;
   priority: number;
   branchName: string;
   url: string;
@@ -308,7 +306,7 @@ interface RawIssueNode {
   parentId: string | null;
   updatedAt: string;
   state: { name: string; type: string } | null;
-  assignee: { name: string } | null;
+  assignee: { id: string; name: string } | null;
   labels: { nodes: Array<{ name: string; color: string }> };
 }
 
@@ -319,7 +317,7 @@ function rawNodeToLinearIssue(node: RawIssueNode): LinearIssue {
     title: node.title,
     description: node.description,
     assignee: node.assignee?.name ?? null,
-    assigneeId: node.assigneeId,
+    assigneeId: node.assignee?.id ?? null,
     status: node.state?.name ?? 'Unknown',
     statusType: node.state?.type ?? 'unstarted',
     priority: node.priority ?? 0,
