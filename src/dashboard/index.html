@@ -212,6 +212,31 @@
     color: var(--purple);
   }
 
+  .person-details {
+    margin: 6px 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  .person-details code {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .detail-label {
+    color: var(--text-dim);
+    margin-right: 4px;
+  }
+
+  .detail-label::after {
+    content: ':';
+  }
+
   .person-commit-time {
     font-size: 11px;
     color: var(--text-dim);
@@ -832,7 +857,19 @@ function renderActivity(activity, linear, statusChanges, newBranches) {
   const statusOrder = { active: 0, idle: 1, offline: 2 };
   people.sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || b.last_active - a.last_active);
 
-  peopleEl.innerHTML = people.map(p => `
+  peopleEl.innerHTML = people.map(p => {
+    const dayAgo = Date.now() / 1000 - 86400;
+    const commits24h = (p.recent_commits || []).filter(c => c.timestamp > dayAgo).length;
+    const featureBranches = (p.active_branches || [])
+      .filter(b => !b.includes('/master') && !b.includes('/main') && !b.includes('/HEAD'))
+      .map(b => b.replace(/^origin\//, ''));
+    const branchDisplay = featureBranches.length > 0
+      ? featureBranches.slice(0, 2).map(b => `<code>${escHtml(b)}</code>`).join(', ')
+        + (featureBranches.length > 2 ? ` +${featureBranches.length - 2}` : '')
+      : '<span style="opacity:0.5">none</span>';
+    const areas = (p.work_areas || []).slice(0, 3).map(a => escHtml(a)).join(', ');
+
+    return `
     <div class="person-card">
       <div class="person-header">
         <span class="person-name">${escHtml(p.name)}</span>
@@ -843,9 +880,14 @@ function renderActivity(activity, linear, statusChanges, newBranches) {
           ? `<span class="issue-id">${escHtml(p.issue.identifier)}</span>: ${escHtml(p.issue.title)}`
           : '<span style="opacity:0.5">No active issue</span>'}
       </div>
+      <div class="person-details">
+        <div class="person-detail"><span class="detail-label">Branches</span> ${branchDisplay}</div>
+        ${areas ? `<div class="person-detail"><span class="detail-label">Working in</span> ${areas}</div>` : ''}
+        <div class="person-detail"><span class="detail-label">Last 24h</span> ${commits24h} commit${commits24h !== 1 ? 's' : ''}</div>
+      </div>
       <div class="person-commit-time">Last commit: ${p.last_active ? timeAgo(p.last_active) : 'none'}</div>
     </div>
-  `).join('');
+  `}).join('');
 
   const events = [];
 
