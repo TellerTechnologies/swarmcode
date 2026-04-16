@@ -184,7 +184,7 @@ swarmcode/
 
 ## License
 
-AGPL-3.0 — same license Linear uses. See [LICENSE](LICENSE) for the full text.
+AGPL-3.0. See [LICENSE](LICENSE) for the full text.
 
 ---
 
