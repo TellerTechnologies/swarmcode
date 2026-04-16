@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/MCP_Server-swarmcode-blueviolet?style=for-the-badge" alt="MCP Server" />
   <img src="https://img.shields.io/badge/version-3.1.0-blue?style=for-the-badge" alt="Version" />
-  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License" />
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="AGPL-3.0 License" />
   <img src="https://img.shields.io/badge/node-18+-brightgreen?style=for-the-badge" alt="Node 18+" />
 </p>
 
@@ -184,7 +184,7 @@ swarmcode/
 
 ## License
 
-MIT
+AGPL-3.0 — same license Linear uses. See [LICENSE](LICENSE) for the full text.
 
 ---
 

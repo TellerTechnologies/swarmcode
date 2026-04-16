@@ -22,7 +22,7 @@
     "git",
     "coordination"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@linear/sdk": "^80.1.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
