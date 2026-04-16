@@ -7,6 +7,9 @@
  */
 
 import { LinearClient } from '@linear/sdk';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -199,21 +202,43 @@ function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T>
 export function clearCache(): void {
   cache.clear();
   rateLimitedUntil = 0;
-  apiCallCount = 0;
 }
 
 // ---------------------------------------------------------------------------
-// API call counter
+// Shared API call counter (file-based, resets each hour)
 // ---------------------------------------------------------------------------
 
-let apiCallCount = 0;
+const COUNTER_DIR = join(homedir(), '.swarmcode');
+const COUNTER_FILE = join(COUNTER_DIR, 'api-calls.json');
+
+function currentHourKey(): string {
+  return new Date().toISOString().slice(0, 13);
+}
+
+function readCounter(): { hour: string; count: number } {
+  try {
+    const raw = readFileSync(COUNTER_FILE, 'utf-8');
+    const data = JSON.parse(raw);
+    if (data.hour === currentHourKey()) return data;
+  } catch {}
+  return { hour: currentHourKey(), count: 0 };
+}
+
+function writeCounter(data: { hour: string; count: number }): void {
+  try {
+    mkdirSync(COUNTER_DIR, { recursive: true });
+    writeFileSync(COUNTER_FILE, JSON.stringify(data));
+  } catch {}
+}
 
 export function getApiCallCount(): number {
-  return apiCallCount;
+  return readCounter().count;
 }
 
 function trackCall(): void {
-  apiCallCount++;
+  const data = readCounter();
+  data.count++;
+  writeCounter(data);
 }
 
 // ---------------------------------------------------------------------------

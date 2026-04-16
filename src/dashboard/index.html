@@ -673,7 +673,7 @@
     <select class="team-select" id="teamSelect" style="display:none">
       <option value="">All Teams</option>
     </select>
-    <span class="header-meta" id="apiCalls" title="Linear API calls this session">API: 0</span>
+    <span class="header-meta" id="apiCalls" title="Linear API calls this hour (resets hourly, limit 4,500)">API: 0 / 4,500</span>
     <span class="header-meta" id="lastUpdate">Connecting...</span>
   </div>
 </header>
@@ -1068,7 +1068,7 @@ function render(data) {
   document.getElementById('lastUpdate').textContent =
     'Updated ' + new Date(data.timestamp).toLocaleTimeString();
   document.getElementById('apiCalls').textContent =
-    'API: ' + (data.linearApiCalls ?? 0).toLocaleString();
+    'API: ' + (data.linearApiCalls ?? 0).toLocaleString() + ' / 4,500';
 
   renderKanban(data.linear);
   renderActivity(data.activity, data.linear, data.statusChanges, data.newBranches);
