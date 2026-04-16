@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import * as git from '../git.js';
 import { checkConflicts } from '../tools/check-conflicts.js';
 import { getProjectContext } from '../tools/get-project-context.js';
-import { getLinearDataForDashboard, getTeams, isConfigured as linearConfigured, type LinearData, type LinearTeam } from '../linear.js';
+import { getLinearDataForDashboard, getTeams, getApiCallCount, isConfigured as linearConfigured, type LinearData, type LinearTeam } from '../linear.js';
 import type { ConflictReport, ProjectContextResult, GitCommit, StatusChange } from '../types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +36,7 @@ export interface DashboardData {
   newBranches: NewBranch[];
   repo: string;
   timestamp: number;
+  linearApiCalls: number;
 }
 
 /**
@@ -245,6 +246,7 @@ async function getAllData(teamKey?: string): Promise<DashboardData> {
     newBranches: [],
     repo,
     timestamp: Date.now(),
+    linearApiCalls: getApiCallCount(),
   };
 }
 

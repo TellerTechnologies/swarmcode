@@ -676,6 +676,7 @@
     <select class="team-select" id="teamSelect" style="display:none">
       <option value="">All Teams</option>
     </select>
+    <span class="header-meta" id="apiCalls" title="Linear API calls this session">API: 0</span>
     <span class="header-meta" id="lastUpdate">Connecting...</span>
   </div>
 </header>
@@ -1069,6 +1070,8 @@ function render(data) {
   document.getElementById('repoName').textContent = data.repo;
   document.getElementById('lastUpdate').textContent =
     'Updated ' + new Date(data.timestamp).toLocaleTimeString();
+  document.getElementById('apiCalls').textContent =
+    'API: ' + (data.linearApiCalls ?? 0).toLocaleString();
 
   renderKanban(data.linear);
   renderActivity(data.activity, data.linear, data.statusChanges, data.newBranches);

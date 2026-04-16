@@ -62,6 +62,28 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Build a raw GraphQL issue node (what rawRequest returns). */
+function createRawIssueNode(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'issue-id-1',
+    identifier: 'ENG-1',
+    title: 'Test Issue',
+    description: 'A test issue description',
+    assigneeId: 'user-id-1',
+    priority: 2,
+    branchName: 'eng-1-test-issue',
+    url: 'https://linear.app/team/issue/ENG-1',
+    dueDate: null,
+    estimate: null,
+    parentId: null,
+    updatedAt: '2024-01-02T00:00:00.000Z',
+    state: { name: 'In Progress', type: 'started' },
+    assignee: { name: 'Alice' },
+    labels: { nodes: [{ name: 'bug', color: '#ff0000' }] },
+    ...overrides,
+  };
+}
+
 /** Build a full mock Issue object matching what client.issue() would return. */
 function createMockIssue(overrides: Record<string, unknown> = {}) {
   return {
@@ -124,7 +146,12 @@ function createMockIssue(overrides: Record<string, unknown> = {}) {
 function buildMockClientInstance() {
   const defaultMockIssue = createMockIssue();
 
+  const defaultRawNode = createRawIssueNode();
+
   return {
+    client: {
+      rawRequest: vi.fn().mockResolvedValue({ data: { issues: { nodes: [defaultRawNode] } } }),
+    },
     searchIssues: vi.fn().mockResolvedValue({ nodes: [{ id: 'issue-id-1' }] }),
     issue: vi.fn().mockResolvedValue(defaultMockIssue),
     issues: vi.fn().mockResolvedValue({ nodes: [defaultMockIssue] }),
@@ -516,9 +543,8 @@ describe('getLinearData', () => {
     const result = await getLinearData();
     expect(result!.team).toBe('ENG');
 
-    // Verify filter included team key
-    const callArgs = getMock().issues.mock.calls[0][0] as { filter: Record<string, unknown> };
-    expect(callArgs.filter).toHaveProperty('team');
+    const callArgs = getMock().client.rawRequest.mock.calls[0] as [string, { filter: Record<string, unknown> }];
+    expect(callArgs[1].filter).toHaveProperty('team');
   });
 
   it('fetches active cycle when team is set', async () => {
@@ -555,8 +581,8 @@ describe('getLinearData', () => {
 
   it('does not include team filter when SWARMCODE_LINEAR_TEAM is unset', async () => {
     await getLinearData();
-    const callArgs = getMock().issues.mock.calls[0][0] as { filter: Record<string, unknown> };
-    expect(callArgs.filter).not.toHaveProperty('team');
+    const callArgs = getMock().client.rawRequest.mock.calls[0] as [string, { filter: Record<string, unknown> }];
+    expect(callArgs[1].filter).not.toHaveProperty('team');
   });
 });
 
