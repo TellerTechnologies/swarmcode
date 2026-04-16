@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mock @linear/sdk before any imports that load it.
@@ -55,6 +55,7 @@ import {
   addIssueLabel,
   removeIssueLabel,
   formatAsMarkdown,
+  clearCache,
 } from '../src/linear.js';
 
 // ---------------------------------------------------------------------------
@@ -251,6 +252,7 @@ beforeEach(() => {
 
   process.env.SWARMCODE_LINEAR_API_KEY = 'test-key';
   delete process.env.SWARMCODE_LINEAR_TEAM;
+  clearCache();
 });
 
 // ---------------------------------------------------------------------------

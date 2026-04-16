@@ -143,11 +143,62 @@ export interface GenericResult {
 let _client: LinearClient | null = null;
 
 function getClient(): LinearClient {
+  checkRateLimit();
   if (_client) return _client;
   const apiKey = process.env.SWARMCODE_LINEAR_API_KEY;
   if (!apiKey) throw new Error('SWARMCODE_LINEAR_API_KEY is not set');
   _client = new LinearClient({ apiKey });
   return _client;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limit backoff
+// ---------------------------------------------------------------------------
+
+let rateLimitedUntil = 0;
+
+function checkRateLimit(): void {
+  const now = Date.now();
+  if (now < rateLimitedUntil) {
+    const waitSecs = Math.ceil((rateLimitedUntil - now) / 1000);
+    throw new Error(`Rate limited by Linear. Retry in ${waitSecs}s.`);
+  }
+}
+
+function handleRateLimit(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Rate limit exceeded') || msg.includes('429')) {
+    rateLimitedUntil = Date.now() + 60_000;
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Read-through cache for common queries
+// ---------------------------------------------------------------------------
+
+interface CacheEntry<T> { data: T; expiresAt: number }
+const cache = new Map<string, CacheEntry<unknown>>();
+
+function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const entry = cache.get(key) as CacheEntry<T> | undefined;
+  if (entry && Date.now() < entry.expiresAt) return Promise.resolve(entry.data);
+
+  return fn().then(data => {
+    cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+    return data;
+  }).catch(err => {
+    if (handleRateLimit(err)) {
+      if (entry) return entry.data;
+    }
+    throw err;
+  });
+}
+
+export function clearCache(): void {
+  cache.clear();
+  rateLimitedUntil = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,37 +356,45 @@ export function isConfigured(): boolean {
   return !!process.env.SWARMCODE_LINEAR_API_KEY;
 }
 
-/** Get the authenticated user. */
-export async function getViewer(): Promise<LinearUser> {
-  const client = getClient();
-  const viewer = await client.viewer;
-  return { id: viewer.id, name: viewer.name, email: viewer.email, active: viewer.active };
+/** Get the authenticated user. Cached 5 min. */
+export function getViewer(): Promise<LinearUser> {
+  return cached('viewer', 300_000, async () => {
+    const client = getClient();
+    const viewer = await client.viewer;
+    return { id: viewer.id, name: viewer.name, email: viewer.email, active: viewer.active };
+  });
 }
 
-/** List teams in the workspace. */
-export async function getTeams(): Promise<LinearTeam[]> {
-  const client = getClient();
-  const teamsConn = await client.teams();
-  return teamsConn.nodes.map(t => ({ id: t.id, name: t.name, key: t.key }));
+/** List teams in the workspace. Cached 5 min. */
+export function getTeams(): Promise<LinearTeam[]> {
+  return cached('teams', 300_000, async () => {
+    const client = getClient();
+    const teamsConn = await client.teams();
+    return teamsConn.nodes.map(t => ({ id: t.id, name: t.name, key: t.key }));
+  });
 }
 
-/** List users in the workspace. */
-export async function getUsers(): Promise<LinearUser[]> {
-  const client = getClient();
-  const usersConn = await client.users();
-  return usersConn.nodes.map(u => ({
-    id: u.id, name: u.name, email: u.email, active: u.active,
-  }));
+/** List users in the workspace. Cached 5 min. */
+export function getUsers(): Promise<LinearUser[]> {
+  return cached('users', 300_000, async () => {
+    const client = getClient();
+    const usersConn = await client.users();
+    return usersConn.nodes.map(u => ({
+      id: u.id, name: u.name, email: u.email, active: u.active,
+    }));
+  });
 }
 
-/** Get workflow states for a team. */
-export async function getWorkflowStates(teamId: string): Promise<LinearWorkflowState[]> {
-  const client = getClient();
-  const team = await client.team(teamId);
-  const statesConn = await team.states();
-  return statesConn.nodes
-    .map(s => ({ id: s.id, name: s.name, type: s.type, position: s.position }))
-    .sort((a, b) => a.position - b.position);
+/** Get workflow states for a team. Cached 5 min. */
+export function getWorkflowStates(teamId: string): Promise<LinearWorkflowState[]> {
+  return cached(`states:${teamId}`, 300_000, async () => {
+    const client = getClient();
+    const team = await client.team(teamId);
+    const statesConn = await team.states();
+    return statesConn.nodes
+      .map(s => ({ id: s.id, name: s.name, type: s.type, position: s.position }))
+      .sort((a, b) => a.position - b.position);
+  });
 }
 
 /** Get cycles for a team (returns active cycle + recent cycles). */
@@ -364,12 +423,12 @@ export async function getCycles(teamId: string): Promise<{ active: LinearCycle |
   return { active: activeCycle, recent };
 }
 
-/** Fetch active issues (used by dashboard). */
-export async function getLinearData(overrideTeamKey?: string): Promise<LinearData | null> {
-  if (!process.env.SWARMCODE_LINEAR_API_KEY) return null;
-
-  const client = getClient();
+/** Fetch active issues. Cached 30s. */
+export function getLinearData(overrideTeamKey?: string): Promise<LinearData | null> {
+  if (!process.env.SWARMCODE_LINEAR_API_KEY) return Promise.resolve(null);
   const teamKey = overrideTeamKey ?? process.env.SWARMCODE_LINEAR_TEAM ?? null;
+  return cached(`linearData:${teamKey ?? 'all'}`, 30_000, async () => {
+    const client = getClient();
 
   // Build filter for all open issues (exclude completed/cancelled)
   const filter: Record<string, unknown> = {
@@ -403,14 +462,15 @@ export async function getLinearData(overrideTeamKey?: string): Promise<LinearDat
   }
 
   return { issues, cycle, team: teamKey };
+  });
 }
 
-/** Fetch issues for dashboard — includes recently completed (last 7 days). */
-export async function getLinearDataForDashboard(overrideTeamKey?: string): Promise<LinearData | null> {
-  if (!process.env.SWARMCODE_LINEAR_API_KEY) return null;
-
-  const client = getClient();
+/** Fetch issues for dashboard — includes recently completed (last 7 days). Cached 30s. */
+export function getLinearDataForDashboard(overrideTeamKey?: string): Promise<LinearData | null> {
+  if (!process.env.SWARMCODE_LINEAR_API_KEY) return Promise.resolve(null);
   const teamKey = overrideTeamKey ?? process.env.SWARMCODE_LINEAR_TEAM ?? null;
+  return cached(`linearDashboard:${teamKey ?? 'all'}`, 30_000, async () => {
+    const client = getClient();
 
   // Open issues
   const openFilter: Record<string, unknown> = {
@@ -454,6 +514,7 @@ export async function getLinearDataForDashboard(overrideTeamKey?: string): Promi
   }
 
   return { issues, cycle, team: teamKey };
+  });
 }
 
 /** Search issues by text query. */
