@@ -319,9 +319,24 @@ export function startDashboard(port: number): void {
 
   const server = createHttpServer((req, res) => handleRequest(req, res, html));
 
-  server.listen(port, () => {
+  let nextPort = port;
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE' && nextPort < port + 20) {
+      nextPort++;
+      console.log(`  Port ${nextPort - 1} in use, trying ${nextPort}...`);
+      server.listen(nextPort);
+    } else {
+      throw err;
+    }
+  });
+
+  server.on('listening', () => {
+    const addr = server.address();
+    const actualPort = typeof addr === 'object' && addr ? addr.port : port;
     console.log(`\n  Swarmcode Dashboard`);
-    console.log(`  http://localhost:${port}\n`);
+    console.log(`  http://localhost:${actualPort}\n`);
     console.log(`  Live-updating every 30 seconds. Press Ctrl+C to stop.\n`);
   });
+
+  server.listen(port);
 }
