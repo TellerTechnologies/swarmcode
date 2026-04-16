@@ -47,10 +47,22 @@ export SWARMCODE_LINEAR_API_KEY=lin_api_xxxxx
 export SWARMCODE_LINEAR_TEAM=ENG              # optional
 ```
 
-For other AI tools:
+### Cursor
 
 ```bash
-swarmcode init --tool cursor     # .cursorrules
+swarmcode init --tool cursor
+```
+
+This creates two files:
+
+- `.cursorrules` with the same coordination rules (call `check_path` before editing, call `search_code` before implementing, etc.)
+- `.cursor/mcp.json` with the swarmcode MCP server configured over stdio
+
+Cursor picks up both automatically. The 35 MCP tools will appear in Cursor's tool list, and the git hooks work regardless of which editor you use.
+
+### GitHub Copilot
+
+```bash
 swarmcode init --tool copilot    # .github/copilot-instructions.md
 ```
 
