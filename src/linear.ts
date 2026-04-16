@@ -283,10 +283,10 @@ const ISSUES_QUERY = `
         url
         dueDate
         estimate
-        parentId
         updatedAt
         state { name type }
         assignee { id name }
+        parent { id }
         labels { nodes { name color } }
       }
     }
@@ -303,10 +303,10 @@ interface RawIssueNode {
   url: string;
   dueDate: string | null;
   estimate: number | null;
-  parentId: string | null;
   updatedAt: string;
   state: { name: string; type: string } | null;
   assignee: { id: string; name: string } | null;
+  parent: { id: string } | null;
   labels: { nodes: Array<{ name: string; color: string }> };
 }
 
@@ -327,7 +327,7 @@ function rawNodeToLinearIssue(node: RawIssueNode): LinearIssue {
     labelDetails: node.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     dueDate: node.dueDate,
     estimate: node.estimate,
-    parentId: node.parentId,
+    parentId: node.parent?.id ?? null,
     updatedAt: node.updatedAt ?? '',
   };
 }
