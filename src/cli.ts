@@ -53,10 +53,9 @@ export function createCLI(): Command {
 
 This project uses swarmcode for AI team coordination.
 
-- At the start of every session, call \`enable_auto_push\` and \`get_team_activity\`
-- At the start of every session, call \`get_project_context\` to understand the project plan
+- At the start of every session, call \`start_session\` (or \`enable_auto_push\` + \`get_team_activity\` + \`get_project_context\`)
 - Before creating or modifying any file, call \`check_path\`
-- Before implementing a function/type/component, call \`search_team_code\`
+- Before implementing a function/type/component, call \`search_code\`
 - Never rebuild something a teammate already built — import it
 - If check_path returns high risk, stop and ask the developer before proceeding
 
@@ -77,6 +76,18 @@ Swarmcode prevents conflicts when multiple agents work concurrently:
 - \`pick_issue\` has an optimistic lock — if an issue is already In Progress, it returns an error. Pick a different issue.
 - \`check_path\` detects merge conflicts before you edit — if it returns \`conflict_likely\` with \`merge_conflicts\`, choose a different approach or wait.
 - Do not work on issues that are already In Progress and assigned to someone else.
+
+### Linear Integration
+
+Swarmcode exposes only the composite Linear workflows that wrap multiple API calls atomically:
+\`pick_issue\`, \`complete_issue\`, \`log_progress\`, \`check_item\`, \`create_issue_relation\`, \`get_issue_relations\`.
+
+For all other Linear operations (list issues, create/update issues, list projects, labels, teams, users, workflow states, etc.),
+install the **official Linear MCP server** alongside swarmcode: https://linear.app/docs/mcp
+
+Rule of thumb:
+- Claiming a ticket, logging progress, checking off items, completing work → swarmcode
+- Everything else on Linear → Linear MCP
 `;
 
   const TOOL_FILES: Record<string, string> = {

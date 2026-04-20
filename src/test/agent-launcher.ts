@@ -8,7 +8,7 @@ const EXEC_OPTS = { encoding: 'utf-8' as const, maxBuffer: 10 * 1024 * 1024 };
 export function buildAgentPrompt(): string {
   return [
     'You have swarmcode available as an MCP server.',
-    'Call start_session to initialize, then look at available issues using linear_get_issues.',
+    'Call start_session to initialize, then use the Linear MCP (list_issues) to see available work.',
     'Pick an available issue using pick_issue — choose one that is NOT already In Progress or assigned.',
     'Create your branch using the branchName returned by pick_issue.',
     'Implement the work described in the issue, commit and push frequently.',

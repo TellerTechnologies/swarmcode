@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/MCP_Server-swarmcode-blueviolet?style=for-the-badge" alt="MCP Server" />
-  <img src="https://img.shields.io/badge/version-3.1.0-blue?style=for-the-badge" alt="Version" />
+  <img src="https://img.shields.io/badge/version-4.0.0-blue?style=for-the-badge" alt="Version" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="AGPL-3.0 License" />
   <img src="https://img.shields.io/badge/node-18+-brightgreen?style=for-the-badge" alt="Node 18+" />
 </p>
@@ -123,23 +123,21 @@ swarmcode test report <run-id>
 
 Each run produces a scorecard (A = clean, D = conflicts or duplicate claims). The harness uses `git merge -X patience` to auto-resolve recoverable conflicts.
 
-### Full Linear control
+### Linear composite workflows
 
-Swarmcode is a superset of the official Linear MCP. Agents can create and update tickets, manage sub-issues, link relations (`blocks`, `duplicate`, `relates-to`), check off description checkboxes, manage labels, and update project status, all from inside a coding session.
+Swarmcode complements the [official Linear MCP server](https://linear.app/docs/mcp) rather than duplicating it. It exposes only the composite workflows that wrap multiple Linear API calls into a single atomic operation — things Linear's own MCP cannot express directly: claiming a ticket under a lock, logging progress with a checkbox sweep, completing work with description cleanup, linking relations (`blocks`, `duplicate`, `relates-to`), and checking off specific description items.
+
+For generic Linear CRUD (list/create/update issues, projects, labels, teams, users, workflow states, comments, cycles, milestones, documents), install the official Linear MCP alongside swarmcode. The two are designed to be used together.
 
 ## Tools
 
 **Git and coordination (9)**
 `start_session` · `check_path` · `search_code` · `check_conflicts` · `get_developer` · `get_project_context` · `get_team_activity` · `enable_auto_push` · `disable_auto_push`
 
-**Linear issues (13)**
-`linear_get_issues` · `pick_issue` · `complete_issue` · `log_progress` · `search_issues` · `get_issue` · `create_issue` · `create_sub_issue` · `update_issue` · `archive_issue` · `check_item` · `create_issue_relation` · `get_issue_relations`
+**Linear composites (6)** — not available in Linear's MCP
+`pick_issue` · `complete_issue` · `log_progress` · `check_item` · `create_issue_relation` · `get_issue_relations`
 
-**Linear projects (5)**
-`project_status` · `get_project_issues` · `update_project_status` · `update_project` · `add_issue_to_project`
-
-**Linear labels, states, workspace (8)**
-`get_labels` · `add_label` · `remove_label` · `get_workflow_states` · `get_teams` · `get_users` · `get_viewer` (+ `update_project` shared above)
+**For everything else on Linear** (issues, projects, labels, states, teams, users, comments, cycles, milestones, documents): install https://linear.app/docs/mcp.
 
 See `docs/architecture.md` for how each one maps to git and Linear operations.
 
