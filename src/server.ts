@@ -13,31 +13,13 @@ import { checkAll } from './tools/check-all.js';
 import { runSessionLinearChecks, autoProjectHealth } from './auto-linear.js';
 import {
   isConfigured as linearConfigured,
-  getLinearData,
-  searchIssues,
   getIssue,
-  getTeams as getLinearTeams,
-  getUsers as getLinearUsers,
-  getViewer,
   startIssue,
   completeIssue,
-  createIssue,
-  createSubIssue,
   commentOnIssue,
-  getProjects,
-  getProjectIssues,
-  getProjectUpdates,
-  createProjectUpdate,
-  updateProject,
-  addIssueToProject,
   updateIssue,
-  archiveIssue,
   createIssueRelation,
   getIssueRelations,
-  getLabels,
-  addIssueLabel,
-  removeIssueLabel,
-  getWorkflowStates,
   checkIssueItem,
 } from './linear.js';
 
@@ -65,7 +47,7 @@ export function createServer(): McpServer {
     '',
     '## Session Start',
     '- Call start_session immediately — it gives you team activity, project context, conflicts, and auto-push in one call',
-    hasLinear ? '- Call linear_get_issues to see what work is available and assigned' : '',
+    hasLinear ? '- For the list of available work, use the Linear MCP (list_issues). Swarmcode only exposes the composite workflows that wrap it.' : '',
     '',
     '## Before Writing Code',
     '- Before creating files in a new directory → call check_path',
@@ -89,7 +71,7 @@ export function createServer(): McpServer {
     '',
     '## Completion',
     hasLinear ? '- When work is complete and merged → call complete_issue to mark it Done (this also checks off any remaining checkboxes)' : '',
-    hasLinear ? '- If you discover a bug or needed task → call create_issue to track it' : '',
+    hasLinear ? '- For generic Linear CRUD not listed here (creating new issues, updating fields, listing projects/labels/teams/users, etc.) → use the official Linear MCP (save_issue, list_issues, list_projects, list_issue_labels, list_teams, list_users, etc.)' : '',
     '',
     hasLinear ? '- Do not work on issues that are already In Progress and assigned to someone else' : '',
   ].filter(Boolean).join('\n');
@@ -268,18 +250,6 @@ export function createServer(): McpServer {
 
   if (hasLinear) {
     server.registerTool(
-      'linear_get_issues',
-      {
-        title: 'Get Issues',
-        description: 'Open issues from Linear (Triage, Backlog, Todo, In Progress). Shows identifier, title, assignee, status, priority, and suggested branch name.',
-        inputSchema: {
-          teamKey: z.string().optional().describe('Team key to filter by (e.g. "WIN", "TEL"). Omit to use SWARMCODE_LINEAR_TEAM env var, or fetch all teams if unset.'),
-        },
-      },
-      ({ teamKey }) => tryLinear(() => getLinearData(teamKey)),
-    );
-
-    server.registerTool(
       'pick_issue',
       {
         title: 'Pick Issue',
@@ -363,114 +333,6 @@ export function createServer(): McpServer {
     );
 
     server.registerTool(
-      'search_issues',
-      {
-        title: 'Search Issues',
-        description: 'Search Linear issues by text. Check if a ticket already exists before creating one.',
-        inputSchema: {
-          query: z.string().describe('Search text'),
-          limit: z.number().optional().describe('Max results (default: 20)'),
-        },
-      },
-      ({ query, limit }) => tryLinear(() => searchIssues(query, limit ?? 20)),
-    );
-
-    server.registerTool(
-      'get_issue',
-      {
-        title: 'Get Issue',
-        description: 'Full details on a specific issue: description, comments, sub-issues, labels, team.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
-        },
-      },
-      ({ issue }) => tryLinear(() => getIssue(issue)),
-    );
-
-    server.registerTool(
-      'create_issue',
-      {
-        title: 'Create Issue',
-        description: 'Create a new Linear issue. Use when you discover a bug, needed refactor, or follow-up work.',
-        inputSchema: {
-          title: z.string().describe('Issue title'),
-          teamId: z.string().describe('Team ID (get from get_teams)'),
-          description: z.string().optional().describe('Description (markdown)'),
-          priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
-          assigneeId: z.string().optional().describe('User ID to assign'),
-        },
-      },
-      ({ title, teamId, description, priority, assigneeId }) => {
-        const fields: Record<string, unknown> = { title, teamId };
-        if (description !== undefined) fields.description = description;
-        if (priority !== undefined) fields.priority = priority;
-        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
-        return tryLinear(() => createIssue(fields as any));
-      },
-    );
-
-    server.registerTool(
-      'create_sub_issue',
-      {
-        title: 'Create Sub-Issue',
-        description: 'Create a child issue under a parent. Inherits the parent team.',
-        inputSchema: {
-          parent: z.string().describe('Parent issue identifier (e.g. "ENG-123")'),
-          title: z.string().describe('Sub-issue title'),
-          description: z.string().optional().describe('Description (markdown)'),
-          priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
-        },
-      },
-      ({ parent, title, description, priority }) => {
-        const fields: Record<string, unknown> = { title };
-        if (description !== undefined) fields.description = description;
-        if (priority !== undefined) fields.priority = priority;
-        return tryLinear(() => createSubIssue(parent, fields as any));
-      },
-    );
-
-    server.registerTool(
-      'update_issue',
-      {
-        title: 'Update Issue',
-        description: 'Update fields on a Linear issue: title, description, priority, assignee, status, due date, estimate. Use get_workflow_states to find valid stateId values.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier (e.g. "ENG-123")'),
-          title: z.string().optional().describe('New title'),
-          description: z.string().optional().describe('New description'),
-          priority: z.number().optional().describe('0=none, 1=urgent, 2=high, 3=normal, 4=low'),
-          assigneeId: z.string().optional().describe('User ID'),
-          stateId: z.string().optional().describe('Workflow state ID (from get_workflow_states)'),
-          dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
-          estimate: z.number().optional().describe('Point estimate'),
-        },
-      },
-      ({ issue, title, description, priority, assigneeId, stateId, dueDate, estimate }) => {
-        const fields: Record<string, unknown> = {};
-        if (title !== undefined) fields.title = title;
-        if (description !== undefined) fields.description = description;
-        if (priority !== undefined) fields.priority = priority;
-        if (assigneeId !== undefined) fields.assigneeId = assigneeId;
-        if (stateId !== undefined) fields.stateId = stateId;
-        if (dueDate !== undefined) fields.dueDate = dueDate;
-        if (estimate !== undefined) fields.estimate = estimate;
-        return tryLinear(() => updateIssue(issue, fields));
-      },
-    );
-
-    server.registerTool(
-      'archive_issue',
-      {
-        title: 'Archive Issue',
-        description: 'Archive an issue that is no longer relevant.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier'),
-        },
-      },
-      ({ issue }) => tryLinear(() => archiveIssue(issue)),
-    );
-
-    server.registerTool(
       'check_item',
       {
         title: 'Check Item',
@@ -508,186 +370,6 @@ export function createServer(): McpServer {
         },
       },
       ({ issue }) => tryLinear(() => getIssueRelations(issue)),
-    );
-
-    // =========================================================================
-    // Linear — Projects
-    // =========================================================================
-
-    server.registerTool(
-      'project_status',
-      {
-        title: 'Project Status',
-        description: 'Get all projects with progress, health, and latest status update. One call for the full project picture.',
-        inputSchema: {},
-      },
-      async () => {
-        try {
-          const projects = await getProjects();
-          const enriched = await Promise.all(
-            projects.map(async (p) => {
-              try {
-                const updates = await getProjectUpdates(p.id, 1);
-                return { ...p, latestUpdate: updates[0] ?? null };
-              } catch {
-                return { ...p, latestUpdate: null };
-              }
-            }),
-          );
-          return json(enriched);
-        } catch (e: any) {
-          return err(e.message);
-        }
-      },
-    );
-
-    server.registerTool(
-      'get_project_issues',
-      {
-        title: 'Get Project Issues',
-        description: 'List all issues in a project to see overall progress.',
-        inputSchema: {
-          projectId: z.string().describe('Project ID (from project_status)'),
-        },
-      },
-      ({ projectId }) => tryLinear(() => getProjectIssues(projectId)),
-    );
-
-    server.registerTool(
-      'update_project_status',
-      {
-        title: 'Update Project Status',
-        description: 'Post a status update on a project with a health indicator.',
-        inputSchema: {
-          projectId: z.string().describe('Project ID'),
-          body: z.string().describe('Status update (markdown)'),
-          health: z.string().optional().describe('"onTrack", "atRisk", or "offTrack" (default: onTrack)'),
-        },
-      },
-      ({ projectId, body, health }) =>
-        tryLinear(() => createProjectUpdate(projectId, body, health ?? 'onTrack')),
-    );
-
-    server.registerTool(
-      'update_project',
-      {
-        title: 'Update Project',
-        description: 'Change a project\'s name, description, state, or target date.',
-        inputSchema: {
-          projectId: z.string().describe('Project ID'),
-          name: z.string().optional().describe('New name'),
-          description: z.string().optional().describe('New description'),
-          state: z.string().optional().describe('"planned", "started", "paused", "completed", "canceled"'),
-          targetDate: z.string().optional().describe('Target date (YYYY-MM-DD)'),
-        },
-      },
-      ({ projectId, name, description, state, targetDate }) => {
-        const fields: Record<string, unknown> = {};
-        if (name !== undefined) fields.name = name;
-        if (description !== undefined) fields.description = description;
-        if (state !== undefined) fields.state = state;
-        if (targetDate !== undefined) fields.targetDate = targetDate;
-        return tryLinear(() => updateProject(projectId, fields as any));
-      },
-    );
-
-    server.registerTool(
-      'add_issue_to_project',
-      {
-        title: 'Add Issue to Project',
-        description: 'Add an existing issue to a project.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier'),
-          projectId: z.string().describe('Project ID'),
-        },
-      },
-      ({ issue, projectId }) => tryLinear(() => addIssueToProject(issue, projectId)),
-    );
-
-    // =========================================================================
-    // Linear — Labels
-    // =========================================================================
-
-    server.registerTool(
-      'get_labels',
-      {
-        title: 'Get Labels',
-        description: 'List all issue labels in the workspace.',
-        inputSchema: {},
-      },
-      () => tryLinear(() => getLabels()),
-    );
-
-    server.registerTool(
-      'add_label',
-      {
-        title: 'Add Label',
-        description: 'Add a label to an issue.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier'),
-          labelId: z.string().describe('Label ID (from get_labels)'),
-        },
-      },
-      ({ issue, labelId }) => tryLinear(() => addIssueLabel(issue, labelId)),
-    );
-
-    server.registerTool(
-      'remove_label',
-      {
-        title: 'Remove Label',
-        description: 'Remove a label from an issue.',
-        inputSchema: {
-          issue: z.string().describe('Issue identifier'),
-          labelId: z.string().describe('Label ID'),
-        },
-      },
-      ({ issue, labelId }) => tryLinear(() => removeIssueLabel(issue, labelId)),
-    );
-
-    // =========================================================================
-    // Linear — Workspace Reference
-    // =========================================================================
-
-    server.registerTool(
-      'get_workflow_states',
-      {
-        title: 'Get Workflow States',
-        description: 'List workflow states for a team (e.g. Backlog, Todo, In Progress, In Review, Done). Use to find stateId values for update_issue.',
-        inputSchema: {
-          teamId: z.string().describe('Team ID (from get_teams)'),
-        },
-      },
-      ({ teamId }) => tryLinear(() => getWorkflowStates(teamId)),
-    );
-
-    server.registerTool(
-      'get_teams',
-      {
-        title: 'Get Teams',
-        description: 'List teams. Needed to resolve team IDs for create_issue and get_workflow_states.',
-        inputSchema: {},
-      },
-      () => tryLinear(() => getLinearTeams()),
-    );
-
-    server.registerTool(
-      'get_users',
-      {
-        title: 'Get Users',
-        description: 'List users. Needed to resolve user IDs for assignments.',
-        inputSchema: {},
-      },
-      () => tryLinear(() => getLinearUsers()),
-    );
-
-    server.registerTool(
-      'get_viewer',
-      {
-        title: 'Get Current User',
-        description: 'Get the authenticated user (you). Your ID, name, and email.',
-        inputSchema: {},
-      },
-      () => tryLinear(() => getViewer()),
     );
   }
 
