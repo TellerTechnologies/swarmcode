@@ -1219,13 +1219,22 @@ export async function removeIssueLabel(identifier: string, labelId: string): Pro
 // Formatting (for dashboard & project context)
 // ---------------------------------------------------------------------------
 
+// Linear's dueDate is "YYYY-MM-DD" and cycle endsAt is an ISO datetime at
+// UTC midnight. Parsing with `new Date(str)` treats them as UTC, which shifts
+// the calendar date backwards on systems west of UTC. Build a local Date
+// from the Y-M-D parts so the display matches Linear's UI regardless of TZ.
+function formatLinearDate(str: string | null | undefined): string {
+  if (!str) return '';
+  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export function formatAsMarkdown(data: LinearData): string {
   const lines: string[] = ['# Linear -- Active Issues'];
 
   if (data.cycle) {
-    const end = data.cycle.endsAt
-      ? new Date(data.cycle.endsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      : '';
+    const end = formatLinearDate(data.cycle.endsAt);
     lines.push(`\nCycle: ${data.cycle.name ?? 'Current'}${end ? ` (ends ${end})` : ''}`);
   }
 

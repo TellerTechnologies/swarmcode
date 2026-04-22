@@ -809,6 +809,27 @@ function formatDate(ts) {
   return new Date(ts * 1000).toLocaleString();
 }
 
+// Linear's dueDate is "YYYY-MM-DD" and cycle endsAt is an ISO datetime at
+// UTC midnight. Parsing either with `new Date(str)` treats it as UTC, which
+// shifts the calendar date backwards for users west of UTC. Extract the
+// Y-M-D parts and build a local Date so the display matches Linear's UI.
+function formatLinearDate(str) {
+  if (!str) return '';
+  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function isPastDueDate(str) {
+  if (!str) return false;
+  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return false;
+  const due = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return due < today;
+}
+
 // --- Render functions ---
 
 function isBot(name) {
@@ -988,12 +1009,10 @@ function getKanbanColumn(issue) {
 
 function renderKanbanCard(issue) {
   const priorityClass = PRIORITY_NAMES[issue.priority] || 'none';
-  const isOverdue = issue.dueDate && new Date(issue.dueDate) < new Date();
+  const isOverdue = isPastDueDate(issue.dueDate);
   const labels = issue.labelDetails || [];
 
-  const dueDateStr = issue.dueDate
-    ? new Date(issue.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    : '';
+  const dueDateStr = formatLinearDate(issue.dueDate);
 
   return `
     <a class="kanban-card" href="${escHtml(issue.url)}" target="_blank" title="${escHtml(issue.title)}">
@@ -1031,9 +1050,7 @@ function renderKanban(data) {
   document.getElementById('kanbanCount').textContent = data.issues.length;
 
   if (data.cycle) {
-    const endDate = data.cycle.endsAt
-      ? new Date(data.cycle.endsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      : '';
+    const endDate = formatLinearDate(data.cycle.endsAt);
     cycleEl.innerHTML = `<div class="kanban-cycle"><strong>${escHtml(data.cycle.name || 'Current Cycle')}</strong>${endDate ? ` — ends ${endDate}` : ''}</div>`;
   } else {
     cycleEl.innerHTML = '';
