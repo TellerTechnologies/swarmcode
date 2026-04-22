@@ -23,6 +23,20 @@ import {
   getIssue,
 } from './linear.js';
 
+// Linear's dueDate is a "YYYY-MM-DD" string. `new Date(str) < new Date()`
+// parses it as UTC midnight, so issues flip to "overdue" partway through the
+// due date itself for anyone west of UTC. Compare on local calendar dates
+// instead — overdue means the due day has fully passed in local time.
+function isPastDueDate(str: string | null | undefined): boolean {
+  if (!str) return false;
+  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return false;
+  const due = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return due < today;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -344,9 +358,7 @@ export async function autoProjectHealth(): Promise<Array<{ projectName: string; 
         const allDone = issues.every(i => i.statusType === 'completed' || i.statusType === 'cancelled');
         const anyStuck = issues.some(i => {
           if (i.statusType !== 'started') return false;
-          // Check if the issue has a due date that's passed
-          if (i.dueDate && new Date(i.dueDate) < new Date()) return true;
-          return false;
+          return isPastDueDate(i.dueDate);
         });
 
         if (allDone && project.state !== 'completed') {
@@ -364,7 +376,7 @@ export async function autoProjectHealth(): Promise<Array<{ projectName: string; 
 
           if (currentHealth !== 'atRisk' && currentHealth !== 'offTrack') {
             const overdueCount = issues.filter(i =>
-              i.statusType === 'started' && i.dueDate && new Date(i.dueDate) < new Date()
+              i.statusType === 'started' && isPastDueDate(i.dueDate)
             ).length;
             const body = `${overdueCount} issue(s) are past their due date. Flagging as at risk.`;
 
